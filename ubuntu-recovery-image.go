@@ -118,7 +118,7 @@ func setupInitrd(initrdImagePath string, tmpDir string, recoveryDir string) {
 	rplib.Checkerr(err)
 
 	log.Printf("[create initrd recovery script]")
-	recoveryInitrdScript, err := ioutil.ReadFile("data/00_recovery")
+	recoveryInitrdScript, err := ioutil.ReadFile("00_recovery")
 	rplib.Checkerr(err)
 	err = ioutil.WriteFile(fmt.Sprintf("%s/scripts/local-premount/00_recovery", initrdTmpDir), recoveryInitrdScript, 0755)
 	rplib.Checkerr(err)
@@ -162,7 +162,7 @@ func createBaseImage() {
 		confGadget.opt, confGadget.value)
 }
 
-func createRecoveryImage(recoveryNR string, recoveryOutputFile string) {
+func createRecoveryImage(recoveryNR string, recoveryOutputFile string, configFolder string) {
 	baseImageLoop, recoveryImageLoop := setupLoopDevice(recoveryOutputFile, recoveryNR)
 	defer rplib.Shellcmd(fmt.Sprintf("losetup -d /dev/%s", baseImageLoop))
 	defer rplib.Shellcmd(fmt.Sprintf("losetup -d /dev/%s", recoveryImageLoop))
@@ -240,11 +240,12 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string) {
 	rplib.Shellexec("grub-editenv", fmt.Sprintf("%s/efi/ubuntu/grub/grubenv", recoveryDir), "set", fmt.Sprintf("recoveryuuid=%s", recoveryUUID))
 
 	log.Printf("[create/overwrite grub.cfg]")
-	rplib.Shellexec("cp", "-f", "data/grub.cfg", fmt.Sprintf("%s/efi/ubuntu/grub/grub.cfg", recoveryDir))
+	rplib.Shellexec("cp", "-f", configFolder+"/data/grub.cfg", fmt.Sprintf("%s/efi/ubuntu/grub/grub.cfg", recoveryDir))
 
 	os.Mkdir(fmt.Sprintf("%s/recovery/", recoveryDir), 0755)
 	log.Printf("[add recovery.bin, factory snaps]")
-	rplib.Shellexec("cp", "-r", "data/factory", "data/bin", fmt.Sprintf("%s/recovery/", recoveryDir))
+	rplib.Shellexec("go", "build", "-o", configFolder+"/data/bin/recovery.bin", configFolder+"/src/recovery.bin.go")
+	rplib.Shellexec("cp", "-r", configFolder+"/data/factory", configFolder+"/data/bin", fmt.Sprintf("%s/recovery/", recoveryDir))
 
 	log.Printf("add system-data and writable tarball")
 	workingDir, err := os.Getwd()
@@ -413,15 +414,18 @@ func printConfigs() {
 
 func main() {
 	var configs YamlConfigs
-	configFile := "./config.yaml"
+	var configFolder string
 
 	args := os.Args
 	numargs := len(args)
 
 	if numargs == 2 {
-		configFile = args[1]
+		configFolder = args[1]
+	} else {
+		log.Fatal("You need to provide config folder.")
 	}
 
+	configFile := configFolder + "/config.yaml"
 	fmt.Printf("Loading config file %s ...\n", configFile)
 	filename, _ := filepath.Abs(configFile)
 	yamlFile, err := ioutil.ReadFile(filename)
@@ -470,7 +474,7 @@ func main() {
 	todayDate := fmt.Sprintf("%d%02d%02d", todayTime.Year(), todayTime.Month(), todayTime.Day())
 	recoveryOutputFile := confProject + "-" + todayDate + "-0.img"
 
-	createRecoveryImage(recoveryNR, recoveryOutputFile)
+	createRecoveryImage(recoveryNR, recoveryOutputFile, configFolder)
 	if confXz == "enable" {
 		compressXZImage(recoveryOutputFile)
 	}

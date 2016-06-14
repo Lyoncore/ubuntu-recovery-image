@@ -12,11 +12,12 @@ EOF
 
 2. Get libraries
 $. ~/.bashrc
+$git clone https://github.com/Lyoncore/generic-amd64-config.git
 $git clone https://github.com/Lyoncore/ubuntu-recovery-image.git
 $go get launchpad.net/godeps
 $godeps -t -u dependencies.tsv
 $go run build.go build
-$sudo ./ubuntu-recovery-image
+$sudo ./ubuntu-recovery-image ../generic-amd64-config
 
 3.run the image in kvm
 $sudo apt install -y qemu-kvm ovmf

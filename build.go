@@ -57,7 +57,6 @@ func main() {
 
 		case "build":
 			clean()
-			build("data/bin/recovery.bin", "src/recovery.bin.go", []string{})
 			build("ubuntu-recovery-image", "ubuntu-recovery-image.go", []string{})
 
 		case "clean":
