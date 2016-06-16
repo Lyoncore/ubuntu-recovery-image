@@ -244,7 +244,6 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, configFol
 
 	os.Mkdir(fmt.Sprintf("%s/recovery/", recoveryDir), 0755)
 	log.Printf("[add recovery.bin, factory snaps]")
-	rplib.Shellexec("go", "build", "-o", configFolder+"/data/bin/recovery.bin", configFolder+"/src/recovery.bin.go")
 	rplib.Shellexec("cp", "-r", configFolder+"/data/factory", configFolder+"/data/bin", fmt.Sprintf("%s/recovery/", recoveryDir))
 
 	log.Printf("add system-data and writable tarball")
