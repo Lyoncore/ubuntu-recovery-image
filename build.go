@@ -58,6 +58,7 @@ func main() {
 		case "build":
 			clean()
 			build("ubuntu-recovery-image", "./cmd/ubuntu-recovery-image/", []string{})
+			build("signserial", "./cmd/signserial/", []string{})
 
 		case "clean":
 			clean()

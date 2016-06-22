@@ -242,8 +242,12 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, configFol
 	rplib.Shellexec("cp", "-f", configFolder+"/data/grub.cfg", fmt.Sprintf("%s/efi/ubuntu/grub/grub.cfg", recoveryDir))
 
 	os.Mkdir(fmt.Sprintf("%s/recovery/", recoveryDir), 0755)
-	log.Printf("[add recovery.bin, factory snaps]")
-	rplib.Shellexec("cp", "-r", configFolder+"/data/factory", configFolder+"/data/bin", fmt.Sprintf("%s/recovery/", recoveryDir))
+	log.Printf("[add folder bin/]")
+	rplib.Shellexec("cp", "-r", configFolder+"/data/bin", fmt.Sprintf("%s/recovery/", recoveryDir))
+	log.Printf("[add factory snaps folder: factory/]")
+	rplib.Shellexec("cp", "-r", configFolder+"/data/factory", fmt.Sprintf("%s/recovery/", recoveryDir))
+	log.Printf("[add folder assertions/]")
+	rplib.Shellexec("cp", "-r", configFolder+"/data/assertions", fmt.Sprintf("%s/recovery/", recoveryDir))
 
 	log.Printf("add system-data and writable tarball")
 	workingDir, err := os.Getwd()
@@ -491,6 +495,10 @@ func printConfigs() {
 }
 
 func main() {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	commitstampInt64, _ := strconv.ParseInt(commitstamp, 10, 64)
+	log.Printf("Version: %v, Commit: %v, Commit date: %v\n", version, commit, time.Unix(commitstampInt64, 0).UTC())
+
 	var configs YamlConfigs
 	var configFolder string
 
@@ -525,11 +533,6 @@ func main() {
 	if errParse {
 		return
 	}
-
-	commitstampInt64, _ := strconv.ParseInt(commitstamp, 10, 64)
-	log.Printf("Version: %v, Commit: %v, Commit date: %v\n", version, commit, time.Unix(commitstampInt64, 0).UTC())
-
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
 	log.Printf("[Setup project for %s]", confProject)
 
