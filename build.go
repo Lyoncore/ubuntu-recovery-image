@@ -57,7 +57,7 @@ func main() {
 
 		case "build":
 			clean()
-			build("ubuntu-recovery-image", "ubuntu-recovery-image.go", []string{})
+			build("ubuntu-recovery-image", "./cmd/ubuntu-recovery-image/", []string{})
 
 		case "clean":
 			clean()
