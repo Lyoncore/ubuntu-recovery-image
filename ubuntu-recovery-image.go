@@ -14,7 +14,6 @@ import (
 )
 
 import rplib "github.com/Lyoncore/ubuntu-recovery-rplib"
-import rpoem "github.com/Lyoncore/ubuntu-recovery-rpoem"
 
 var version string
 var commit string
@@ -25,13 +24,13 @@ var build_date string
 func setupLoopDevice(recoveryOutputFile string, recoveryNR string) (string, string) {
 
 	log.Printf("[**SETUP_LOOPDEVICE**]")
-	basefile, err := os.Open(confBaseImageName.value)
+	basefile, err := os.Open(confBaseImage.value)
 	rplib.Checkerr(err)
 	defer basefile.Close()
 	basefilest, err := basefile.Stat()
 	rplib.Checkerr(err)
 
-	log.Printf("fallocate %d bytes for %q\n", basefilest.Size(), confBaseImageName.value)
+	log.Printf("fallocate %d bytes for %q\n", basefilest.Size(), confBaseImage.value)
 	outputfile, err := os.Create(recoveryOutputFile)
 	rplib.Checkerr(err)
 	defer outputfile.Close()
@@ -42,7 +41,7 @@ func setupLoopDevice(recoveryOutputFile string, recoveryNR string) (string, stri
 	recoveryImageLoop := rplib.Shellcmdoutput(fmt.Sprintf("losetup --find --show %s | xargs basename", recoveryOutputFile))
 
 	log.Printf("[setup a readonly loopback device for base image]")
-	baseImageLoop := rplib.Shellcmdoutput(fmt.Sprintf("losetup -r --find --show %s | xargs basename", confBaseImageName.value))
+	baseImageLoop := rplib.Shellcmdoutput(fmt.Sprintf("losetup -r --find --show %s | xargs basename", confBaseImage.value))
 
 	log.Printf("[create %s partition on %s]", recoveryOutputFile, recoveryImageLoop)
 
@@ -55,7 +54,7 @@ func setupLoopDevice(recoveryOutputFile string, recoveryNR string) (string, stri
 		"unit", "MiB",
 		"mklabel", "gpt",
 		"mkpart", "primary", "fat32", fmt.Sprintf("%d", recoveryBegin), fmt.Sprintf("%d", recoveryEnd),
-		"name", recoveryNR, rpoem.FilesystemLabel(),
+		"name", recoveryNR, confFsLabel,
 		"set", recoveryNR, "boot", "on",
 		"print")
 
@@ -130,13 +129,13 @@ func setupInitrd(initrdImagePath string, tmpDir string, recoveryDir string) {
 func createBaseImage() {
 	var developerMode, enablessh string
 
-	if confDevmode == "enable" {
+	if confDevmode {
 		developerMode = "--developer-mode"
 	} else {
 		developerMode = ""
 	}
 
-	if confSsh == "enable" {
+	if confSsh {
 		enablessh = "--enable-ssh"
 	} else {
 		enablessh = ""
@@ -144,16 +143,16 @@ func createBaseImage() {
 
 	fmt.Printf("Channel: %s\n", confChannel.value)
 
-	if _, err := os.Stat(confBaseImageName.value); err == nil {
-		fmt.Printf("The file %s exist, remove the file.\n", confBaseImageName.value)
-		os.Remove(confBaseImageName.value)
+	if _, err := os.Stat(confBaseImage.value); err == nil {
+		fmt.Printf("The file %s exist, remove the file.\n", confBaseImage.value)
+		os.Remove(confBaseImage.value)
 	}
 
 	rplib.Shellexec(confUdfBinary, confUdfOption, confRelease,
 		confStore.opt, confStore.value,
 		confDevice.opt, confDevice.value,
 		confChannel.opt, confChannel.value,
-		confBaseImageName.opt, confBaseImageName.value,
+		confBaseImage.opt, confBaseImage.value,
 		enablessh,
 		confSize.opt, confSize.value,
 		developerMode,
@@ -180,7 +179,7 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, configFol
 
 	// TODO: rewritten with launchpad/goget-ubuntu-touch/DiskImage image.Create
 	log.Printf("[mkfs.fat]")
-	rplib.Shellexec("mkfs.fat", "-F", "32", "-n", rpoem.FilesystemLabel(), fmt.Sprintf("/dev/mapper/%sp%s", recoveryImageLoop, recoveryNR))
+	rplib.Shellexec("mkfs.fat", "-F", "32", "-n", confFsLabel, fmt.Sprintf("/dev/mapper/%sp%s", recoveryImageLoop, recoveryNR))
 
 	tmpDir, err := ioutil.TempDir("", "")
 	rplib.Checkerr(err)
@@ -189,7 +188,7 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, configFol
 	defer os.RemoveAll(tmpDir) // clean up
 
 	recoveryMapperDevice := fmt.Sprintf("/dev/mapper/%sp%s", recoveryImageLoop, recoveryNR)
-	recoveryDir := fmt.Sprintf("%s/device/%s/", tmpDir, rpoem.FilesystemLabel())
+	recoveryDir := fmt.Sprintf("%s/device/%s/", tmpDir, confFsLabel)
 	log.Printf("[mkdir %s]", recoveryDir)
 
 	err = os.MkdirAll(recoveryDir, 0755)
@@ -231,7 +230,7 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, configFol
 	log.Printf("[create grubenv for switching between core and recovery system]")
 	rplib.Shellexec("grub-editenv", fmt.Sprintf("%s/efi/ubuntu/grub/grubenv", recoveryDir), "create")
 	rplib.Shellexec("grub-editenv", fmt.Sprintf("%s/efi/ubuntu/grub/grubenv", recoveryDir), "set", "firstfactoryrestore=no")
-	rplib.Shellexec("grub-editenv", fmt.Sprintf("%s/efi/ubuntu/grub/grubenv", recoveryDir), "set", fmt.Sprintf("recoverylabel=%s", rpoem.FilesystemLabel()))
+	rplib.Shellexec("grub-editenv", fmt.Sprintf("%s/efi/ubuntu/grub/grubenv", recoveryDir), "set", fmt.Sprintf("recoverylabel=%s", confFsLabel))
 
 	rplib.Shellexec("grub-editenv", fmt.Sprintf("%s/efi/ubuntu/grub/grubenv", recoveryDir), "set", "recoverytype=factory_install")
 
@@ -268,8 +267,10 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, configFol
 	osSnap := findSnap(fmt.Sprintf("%s/image/writable/system-data/var/lib/snapd/snaps/", tmpDir), confOs.value)
 	rplib.Shellexec("cp", "-f", osSnap, fmt.Sprintf("%s/os.snap", recoveryDir))
 
-	log.Printf("[Create oem specific hooks]")
-	rpoem.CreateHookDir(recoveryDir)
+	if confOemHookDir != "" {
+		log.Printf("[Create oem specific hooks]")
+		os.MkdirAll(recoveryDir+"/"+confOemHookDir, os.ModePerm)
+	}
 
 	log.Printf("[setup initrd.img and vmlinuz]")
 	initrdImagePath := fmt.Sprintf("%s/initrd.img", recoveryDir)
@@ -284,10 +285,47 @@ func compressXZImage(imageFile string) {
 // configs from yaml file
 type YamlConfigs struct {
 	Project string
-	Snaps   map[string][]string
-	Configs map[string][]string
-	Udf     map[string][]string
-	Debug   map[string][]string
+
+	Snaps struct {
+		Kernel string
+		Os     string
+		Gadget string
+	}
+
+	Configs struct {
+		Arch         string
+		Baseimage    string
+		Recoverytype string
+		Recoverysize string
+		Release      string
+		Store        string
+		Device       string
+		Channel      string
+		Size         string
+		Oemhookdir   string
+		Oemlogdir    string
+	}
+
+	Udf struct {
+		Binary string
+		Option string
+	}
+
+	Debug struct {
+		Devmode bool
+		Ssh     bool
+		Xz      bool
+	}
+
+	Recovery struct {
+		FsLabel         string `yaml:"filesystem-label"`
+		BootPart        string `yaml:"boot-partition"`
+		SystembootPart  string `yaml:"systemboot-partition"`
+		WritablePart    string `yaml:"writable-partition"`
+		BootImage       string `yaml:"boot-image"`
+		SystembootImage string `yaml:"systemboot-image"`
+		WritableImage   string `yaml:"writable-image"`
+	}
 }
 
 type Config struct {
@@ -295,119 +333,160 @@ type Config struct {
 }
 
 var (
-	confProject       = "ubuntucore"
-	confKernel        = Config{"--kernel", "canonical-pc-linux"}
-	confOs            = Config{"--os", "ubuntu-core"}
-	confGadget        = Config{"--gadget", "canonical-pc"}
-	confBaseImageName = Config{"--output", "base.img"}
-	confRecoveryType  = "full"
-	confRecoverySize  = "768"
-	confRelease       = "16"
-	confStore         = Config{"", ""}
-	confDevice        = Config{"", ""}
-	confChannel       = Config{"--channel", "stable"}
-	confSize          = Config{"--size", "4"}
-	confUdfBinary     = "./ubuntu-device-flash"
-	confUdfOption     = "core"
-	confDevmode       = "enable"
-	confSsh           = "enable"
-	confXz            = "enable"
+	confProject      string
+	confKernel       = Config{"--kernel", ""}
+	confOs           = Config{"--os", ""}
+	confGadget       = Config{"--gadget", ""}
+	confBaseImage    = Config{"--output", ""}
+	confRecoveryType string
+	confRecoverySize string
+	confRelease      string
+	confStore        = Config{"", ""}
+	confDevice       = Config{"", ""}
+	confChannel      = Config{"--channel", ""}
+	confSize         = Config{"--size", ""}
+	confOemHookDir   string
+	confOemLogDir    string
+	confUdfBinary    string
+	confUdfOption    string
+	confDevmode      bool
+	confSsh          bool
+	confXz           bool
+	confFsLabel      string
 )
 
-func parseConfigs(configs YamlConfigs) {
+func parseConfigs(configs YamlConfigs) bool {
 	fmt.Printf("parseConfig ... \n")
 
-	if configs.Project != "" {
-		confProject = configs.Project
+	errCount := 0
+	if configs.Project == "" {
+		log.Println("Parse config.yaml failed, need to specify 'project' field")
+		errCount++
 	}
 
-	if configs.Snaps["kernel"] != nil {
-		confKernel.value = configs.Snaps["kernel"][0]
+	if configs.Snaps.Kernel == "" {
+		log.Println("Parse config.yaml failed, need to specify 'snaps -> kernel' field")
+		errCount++
 	}
 
-	if configs.Snaps["os"] != nil {
-		confOs.value = configs.Snaps["os"][0]
+	if configs.Snaps.Os == "" {
+		log.Println("Parse config.yaml failed, need to specify 'snaps -> os' field")
+		errCount++
 	}
 
-	if configs.Snaps["gadget"] != nil {
-		confGadget.value = configs.Snaps["gadget"][0]
+	if configs.Snaps.Gadget == "" {
+		log.Println("Parse config.yaml failed, need to specify 'snaps -> gadget' field")
+		errCount++
 	}
 
-	if configs.Configs["baseimagename"] != nil {
-		confBaseImageName.value = configs.Configs["baseimagename"][0]
+	if configs.Configs.Baseimage == "" {
+		log.Println("Parse config.yaml failed, need to specify 'configs -> baseimage' field")
+		errCount++
 	}
 
-	if configs.Configs["recoverytype"] != nil {
-		confRecoveryType = configs.Configs["recoverytype"][0]
+	if configs.Configs.Recoverytype == "" {
+		log.Println("Parse config.yaml failed, need to specify 'configs -> recoverytype' field")
+		errCount++
 	}
 
-	if configs.Configs["recoverysize"] != nil {
-		confRecoverySize = configs.Configs["recoverysize"][0]
+	if configs.Configs.Recoverysize == "" {
+		log.Println("Parse config.yaml failed, need to specify 'configs -> recoverysize' field")
+		errCount++
 	}
 
-	if configs.Configs["release"] != nil {
-		confRelease = configs.Configs["release"][0]
+	if configs.Configs.Release == "" {
+		log.Println("Parse config.yaml failed, need to specify 'configs -> release' field")
+		errCount++
 	}
 
-	if configs.Configs["store"] != nil {
+	if configs.Configs.Channel == "" {
+		log.Println("Parse config.yaml failed, need to specify 'configs -> channel' field")
+		errCount++
+	}
+
+	if configs.Configs.Size == "" {
+		log.Println("Parse config.yaml failed, need to specify 'configs -> size' field")
+		errCount++
+	}
+
+	if configs.Udf.Binary == "" {
+		log.Println("Parse config.yaml failed, need to specify 'udf -> binary' field")
+		errCount++
+	}
+
+	if configs.Udf.Option == "" {
+		log.Println("Parse config.yaml failed, need to specify 'udf -> option' field")
+		errCount++
+	}
+
+	if configs.Recovery.FsLabel == "" {
+		log.Println("Parse config.yaml failed, need to specify 'recovery -> filesystem-label' field")
+		errCount++
+	}
+
+	if errCount > 0 {
+		log.Println("Parse error")
+		return true
+	}
+
+	confProject = configs.Project
+	confKernel.value = configs.Snaps.Kernel
+	confOs.value = configs.Snaps.Os
+	confGadget.value = configs.Snaps.Gadget
+	confBaseImage.value = configs.Configs.Baseimage
+	confRecoveryType = configs.Configs.Recoverytype
+	confRecoverySize = configs.Configs.Recoverysize
+	confRelease = configs.Configs.Release
+	confChannel.value = configs.Configs.Channel
+	confSize.value = configs.Configs.Size
+	confOemHookDir = configs.Configs.Oemhookdir
+	confOemLogDir = configs.Configs.Oemlogdir
+	confUdfBinary = configs.Udf.Binary
+	confUdfOption = configs.Udf.Option
+	confDevmode = configs.Debug.Devmode
+	confSsh = configs.Debug.Ssh
+	confXz = configs.Debug.Xz
+	confFsLabel = configs.Recovery.FsLabel
+
+	if configs.Configs.Store != "" {
 		confStore.opt = "--store"
-		confStore.value = configs.Configs["store"][0]
+		confStore.value = configs.Configs.Store
 	}
 
-	if configs.Configs["device"] != nil {
+	if configs.Configs.Device != "" {
 		confDevice.opt = "--device"
-		confDevice.value = configs.Configs["device"][0]
+		confDevice.value = configs.Configs.Device
 	}
 
-	if configs.Configs["channel"] != nil {
-		confChannel.value = configs.Configs["channel"][0]
-	}
+	confOemHookDir = configs.Configs.Oemhookdir
+	confOemLogDir = configs.Configs.Oemlogdir
 
-	if configs.Configs["size"] != nil {
-		confChannel.value = configs.Configs["channel"][0]
-	}
-
-	if configs.Udf["binary"] != nil {
-		confUdfBinary = configs.Udf["binary"][0]
-	}
-
-	if configs.Udf["option"] != nil {
-		confUdfOption = configs.Udf["option"][0]
-	}
-
-	if configs.Debug["devmode"] != nil {
-		confDevmode = configs.Debug["devmode"][0]
-	}
-
-	if configs.Debug["ssh"] != nil {
-		confSsh = configs.Debug["ssh"][0]
-	}
-
-	if configs.Debug["xz"] != nil {
-		confXz = configs.Debug["xz"][0]
-	}
+	return false
 }
 
 func printConfigs() {
 	fmt.Printf("Configs from yaml file\n")
 	fmt.Println("-----------------------------------------------")
-	fmt.Printf("project: %s\n", confProject)
-	fmt.Printf("kernel: %s\n", confKernel)
-	fmt.Printf("os: %s\n", confOs)
-	fmt.Printf("gadget: %s\n", confGadget)
-	fmt.Printf("baseimagename: %s\n", confBaseImageName)
-	fmt.Printf("recoverytype: %s\n", confRecoveryType)
-	fmt.Printf("recoverysize: %s\n", confRecoverySize)
-	fmt.Printf("release: %s\n", confRelease)
-	fmt.Printf("store: %s\n", confStore)
-	fmt.Printf("device: %s\n", confDevice)
-	fmt.Printf("channel: %s\n", confChannel)
-	fmt.Printf("size: %s\n", confSize)
-	fmt.Printf("udf binary: %s\n", confUdfBinary)
-	fmt.Printf("udf option: %s\n", confUdfOption)
-	fmt.Printf("devmode: %s\n", confDevmode)
-	fmt.Printf("ssh: %s\n", confSsh)
-	fmt.Printf("xz: %s\n", confXz)
+	fmt.Println("project: ", confProject)
+	fmt.Println("kernel: ", confKernel)
+	fmt.Println("os: ", confOs)
+	fmt.Println("gadget: ", confGadget)
+	fmt.Println("baseimage: ", confBaseImage)
+	fmt.Println("recoverytype: ", confRecoveryType)
+	fmt.Println("recoverysize: ", confRecoverySize)
+	fmt.Println("release: ", confRelease)
+	fmt.Println("store: ", confStore)
+	fmt.Println("device: ", confDevice)
+	fmt.Println("channel: ", confChannel)
+	fmt.Println("size: ", confSize)
+	fmt.Println("oemhookdir: ", confOemHookDir)
+	fmt.Println("oemlogdir: ", confOemLogDir)
+	fmt.Println("udf binary: ", confUdfBinary)
+	fmt.Println("udf option: ", confUdfOption)
+	fmt.Println("devmode: ", confDevmode)
+	fmt.Println("ssh: ", confSsh)
+	fmt.Println("xz: ", confXz)
+	fmt.Println("fslabel: ", confFsLabel)
 	fmt.Println("-----------------------------------------------")
 }
 
@@ -440,8 +519,12 @@ func main() {
 		panic(err)
 	}
 
-	parseConfigs(configs)
+	errParse := parseConfigs(configs)
 	printConfigs()
+
+	if errParse {
+		return
+	}
 
 	commitstampInt64, _ := strconv.ParseInt(commitstamp, 10, 64)
 	log.Printf("Version: %v, Commit: %v, Commit date: %v\n", version, commit, time.Unix(commitstampInt64, 0).UTC())
@@ -449,17 +532,16 @@ func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
 	log.Printf("[Setup project for %s]", confProject)
-	rpoem.InitProject(confProject)
 
 	// Create base image or recovery image or both according to RecoveryType
 	if confRecoveryType == "base" || confRecoveryType == "full" {
 		createBaseImage()
 		if confRecoveryType == "base" {
-			log.Printf("[Create base image %s only]", confBaseImageName.value)
+			log.Printf("[Create base image %s only]", confBaseImage.value)
 			os.Exit(0)
 		}
 	} else if confRecoveryType == "recovery" {
-		log.Printf("[Base image is %s]", confBaseImageName.value)
+		log.Printf("[Base image is %s]", confBaseImage.value)
 	} else {
 		fmt.Printf("%q is not valid type.\n", confRecoveryType)
 		os.Exit(2)
@@ -474,7 +556,7 @@ func main() {
 	recoveryOutputFile := confProject + "-" + todayDate + "-0.img"
 
 	createRecoveryImage(recoveryNR, recoveryOutputFile, configFolder)
-	if confXz == "enable" {
+	if confXz {
 		compressXZImage(recoveryOutputFile)
 	}
 }
