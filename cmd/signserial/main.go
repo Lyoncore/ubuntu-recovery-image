@@ -28,7 +28,6 @@ func main() {
 
 	modelAssertionFile := flag.String("modelAssert", "", "file of model assertion")
 	targetFolder := flag.String("target", "", "target folder to store serial assertion")
-	signServer := flag.String("signServer", "", "url of signing server")
 	flag.Parse()
 
 	if "" == *targetFolder {
@@ -40,5 +39,8 @@ func main() {
 	modelAssertion, err := asserts.Decode(fileContent)
 	rplib.Checkerr(err)
 
-	rplib.SignSerial(modelAssertion, *targetFolder, *signServer)
+	content, err := rplib.SerialAssertionGen(modelAssertion, *targetFolder)
+	rplib.Checkerr(err)
+	err = ioutil.WriteFile(*targetFolder+"/"+rplib.SerialUnsigned, []byte(content), 0600)
+	rplib.Checkerr(err)
 }
