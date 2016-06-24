@@ -22,31 +22,29 @@ var build_date string
 
 // setupLoopDevice setup loop device for base image and recovery image.
 func setupLoopDevice(recoveryOutputFile string, recoveryNR string) (string, string) {
-
-	log.Printf("[**SETUP_LOOPDEVICE**]")
-	basefile, err := os.Open(confBaseImage.value)
+	log.Printf("[SETUP_LOOPDEVICE]")
+	basefile, err := os.Open(configs.Configs.BaseImage)
 	rplib.Checkerr(err)
 	defer basefile.Close()
 	basefilest, err := basefile.Stat()
 	rplib.Checkerr(err)
 
-	log.Printf("fallocate %d bytes for %q\n", basefilest.Size(), confBaseImage.value)
+	log.Printf("fallocate %d bytes for %q\n", basefilest.Size(), configs.Configs.BaseImage)
 	outputfile, err := os.Create(recoveryOutputFile)
 	rplib.Checkerr(err)
 	defer outputfile.Close()
 
-	syscall.Fallocate(int(outputfile.Fd()), 0, 0,
-		basefilest.Size())
+	syscall.Fallocate(int(outputfile.Fd()), 0, 0, basefilest.Size())
 	log.Printf("[setup a loopback device for recovery image %s]", recoveryOutputFile)
 	recoveryImageLoop := rplib.Shellcmdoutput(fmt.Sprintf("losetup --find --show %s | xargs basename", recoveryOutputFile))
 
 	log.Printf("[setup a readonly loopback device for base image]")
-	baseImageLoop := rplib.Shellcmdoutput(fmt.Sprintf("losetup -r --find --show %s | xargs basename", confBaseImage.value))
+	baseImageLoop := rplib.Shellcmdoutput(fmt.Sprintf("losetup -r --find --show %s | xargs basename", configs.Configs.BaseImage))
 
 	log.Printf("[create %s partition on %s]", recoveryOutputFile, recoveryImageLoop)
 
 	recoveryBegin := 4
-	recoverySize, err := strconv.Atoi(confRecoverySize)
+	recoverySize, err := strconv.Atoi(configs.Configs.RecoverySize)
 	rplib.Checkerr(err)
 	recoveryEnd := recoveryBegin + recoverySize
 
@@ -54,7 +52,7 @@ func setupLoopDevice(recoveryOutputFile string, recoveryNR string) (string, stri
 		"unit", "MiB",
 		"mklabel", "gpt",
 		"mkpart", "primary", "fat32", fmt.Sprintf("%d", recoveryBegin), fmt.Sprintf("%d", recoveryEnd),
-		"name", recoveryNR, confFsLabel,
+		"name", recoveryNR, configs.Recovery.FsLabel,
 		"set", recoveryNR, "boot", "on",
 		"print")
 
@@ -89,7 +87,7 @@ func setupInitrd(initrdImagePath string, tmpDir string, recoveryDir string) {
 	defer os.RemoveAll(kernelsnapTmpDir)
 
 	log.Printf("[copy kernel snap to recoveryDir]")
-	kernelSnapPath := findSnap(fmt.Sprintf("%s/image/writable/system-data/var/lib/snapd/snaps/", tmpDir), confKernel.value)
+	kernelSnapPath := findSnap(fmt.Sprintf("%s/image/writable/system-data/var/lib/snapd/snaps/", tmpDir), configs.Snaps.Kernel)
 
 	rplib.Shellexec("mount", kernelSnapPath, kernelsnapTmpDir)
 	defer syscall.Unmount(kernelsnapTmpDir, 0)
@@ -127,45 +125,33 @@ func setupInitrd(initrdImagePath string, tmpDir string, recoveryDir string) {
 }
 
 func createBaseImage() {
-	var developerMode, enablessh string
+	fmt.Printf("Create base image, channel: %s\n", configs.Configs.Channel)
 
-	if confDevmode {
-		developerMode = "--developer-mode"
-	} else {
-		developerMode = ""
+	if _, err := os.Stat(configs.Configs.BaseImage); err == nil {
+		fmt.Printf("The file %s exist, remove the file.\n", configs.Configs.BaseImage)
+		os.Remove(configs.Configs.BaseImage)
 	}
 
-	if confSsh {
-		enablessh = "--enable-ssh"
-	} else {
-		enablessh = ""
-	}
-
-	fmt.Printf("Channel: %s\n", confChannel.value)
-
-	if _, err := os.Stat(confBaseImage.value); err == nil {
-		fmt.Printf("The file %s exist, remove the file.\n", confBaseImage.value)
-		os.Remove(confBaseImage.value)
-	}
-
-	rplib.Shellexec(confUdfBinary, confUdfOption, confRelease,
-		confStore.opt, confStore.value,
-		confDevice.opt, confDevice.value,
-		confChannel.opt, confChannel.value,
-		confBaseImage.opt, confBaseImage.value,
-		enablessh,
-		confSize.opt, confSize.value,
-		developerMode,
-		confKernel.opt, confKernel.value,
-		confOs.opt, confOs.value,
-		confGadget.opt, confGadget.value)
+	rplib.Shellexec(configs.Udf.Binary, configs.Udf.Option, configs.Configs.Release,
+		optStore, configs.Configs.Store,
+		optDevice, configs.Configs.Device,
+		optChannel, configs.Configs.Channel,
+		optBaseImage, configs.Configs.BaseImage,
+		optSsh,
+		optSize, configs.Configs.Size,
+		optDevmode,
+		optKernel, configs.Snaps.Kernel,
+		optOs, configs.Snaps.Os,
+		optGadget, configs.Snaps.Gadget)
 }
 
 func createRecoveryImage(recoveryNR string, recoveryOutputFile string, configFolder string) {
+	// Setup loop devices
 	baseImageLoop, recoveryImageLoop := setupLoopDevice(recoveryOutputFile, recoveryNR)
+	// Delete loop devices
 	defer rplib.Shellcmd(fmt.Sprintf("losetup -d /dev/%s", baseImageLoop))
 	defer rplib.Shellcmd(fmt.Sprintf("losetup -d /dev/%s", recoveryImageLoop))
-	log.Printf("[base image loop:%s,recovery image loop: %s created]\n", baseImageLoop, recoveryImageLoop)
+	log.Printf("[base image loop:%s, recovery image loop: %s created]\n", baseImageLoop, recoveryImageLoop)
 
 	// Create device maps from partition tables
 	log.Printf("[kpartx]")
@@ -179,7 +165,7 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, configFol
 
 	// TODO: rewritten with launchpad/goget-ubuntu-touch/DiskImage image.Create
 	log.Printf("[mkfs.fat]")
-	rplib.Shellexec("mkfs.fat", "-F", "32", "-n", confFsLabel, fmt.Sprintf("/dev/mapper/%sp%s", recoveryImageLoop, recoveryNR))
+	rplib.Shellexec("mkfs.fat", "-F", "32", "-n", configs.Recovery.FsLabel, fmt.Sprintf("/dev/mapper/%sp%s", recoveryImageLoop, recoveryNR))
 
 	tmpDir, err := ioutil.TempDir("", "")
 	rplib.Checkerr(err)
@@ -188,7 +174,7 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, configFol
 	defer os.RemoveAll(tmpDir) // clean up
 
 	recoveryMapperDevice := fmt.Sprintf("/dev/mapper/%sp%s", recoveryImageLoop, recoveryNR)
-	recoveryDir := fmt.Sprintf("%s/device/%s/", tmpDir, confFsLabel)
+	recoveryDir := fmt.Sprintf("%s/device/%s/", tmpDir, configs.Recovery.FsLabel)
 	log.Printf("[mkdir %s]", recoveryDir)
 
 	err = os.MkdirAll(recoveryDir, 0755)
@@ -230,7 +216,7 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, configFol
 	log.Printf("[create grubenv for switching between core and recovery system]")
 	rplib.Shellexec("grub-editenv", fmt.Sprintf("%s/efi/ubuntu/grub/grubenv", recoveryDir), "create")
 	rplib.Shellexec("grub-editenv", fmt.Sprintf("%s/efi/ubuntu/grub/grubenv", recoveryDir), "set", "firstfactoryrestore=no")
-	rplib.Shellexec("grub-editenv", fmt.Sprintf("%s/efi/ubuntu/grub/grubenv", recoveryDir), "set", fmt.Sprintf("recoverylabel=%s", confFsLabel))
+	rplib.Shellexec("grub-editenv", fmt.Sprintf("%s/efi/ubuntu/grub/grubenv", recoveryDir), "set", fmt.Sprintf("recoverylabel=%s", configs.Recovery.FsLabel))
 
 	rplib.Shellexec("grub-editenv", fmt.Sprintf("%s/efi/ubuntu/grub/grubenv", recoveryDir), "set", "recoverytype=factory_install")
 
@@ -249,31 +235,40 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, configFol
 	log.Printf("[add folder assertions/]")
 	rplib.Shellexec("cp", "-r", configFolder+"/data/assertions", fmt.Sprintf("%s/recovery/", recoveryDir))
 
-	log.Printf("add system-data and writable tarball")
-	workingDir, err := os.Getwd()
-	rplib.Checkerr(err)
+	if configs.Recovery.SystembootImage != "" && configs.Recovery.WritableImage != "" {
+		log.Printf("Copy user provided system-boot (%s) and writable (%s) images to %s/recovery/factory directory\n",
+			configs.Recovery.SystembootImage, configs.Recovery.WritableImage, recoveryDir)
 
-	err = os.Chdir(fmt.Sprintf("%s/image/system-boot/", tmpDir))
-	rplib.Checkerr(err)
-	rplib.Shellexec("tar", "--xattrs", "-Jcpf", fmt.Sprintf("%s/recovery/factory/system-boot.tar.xz", recoveryDir), ".")
+		rplib.Shellexec("cp", configFolder+"/"+configs.Recovery.SystembootImage, fmt.Sprintf("%s/recovery/factory/", recoveryDir))
+		rplib.Shellexec("cp", configFolder+"/"+configs.Recovery.WritableImage, fmt.Sprintf("%s/recovery/factory/", recoveryDir))
+	} else {
+		log.Printf("add system-data and writable tarball from base image")
 
-	err = os.Chdir(fmt.Sprintf("%s/image/writable/", tmpDir))
-	rplib.Checkerr(err)
-	rplib.Shellexec("tar", "--xattrs", "-Jcpf", fmt.Sprintf("%s/recovery/factory/writable.tar.xz", recoveryDir), ".")
+		workingDir, err := os.Getwd()
+		rplib.Checkerr(err)
 
-	os.Chdir(workingDir)
+		err = os.Chdir(fmt.Sprintf("%s/image/system-boot/", tmpDir))
+		rplib.Checkerr(err)
+		rplib.Shellexec("tar", "--xattrs", "-Jcpf", fmt.Sprintf("%s/recovery/factory/system-boot.tar.xz", recoveryDir), ".")
+
+		err = os.Chdir(fmt.Sprintf("%s/image/writable/", tmpDir))
+		rplib.Checkerr(err)
+		rplib.Shellexec("tar", "--xattrs", "-Jcpf", fmt.Sprintf("%s/recovery/factory/writable.tar.xz", recoveryDir), ".")
+
+		os.Chdir(workingDir)
+	}
 
 	// copy kernel, gadget, os snap
-	kernelSnap := findSnap(fmt.Sprintf("%s/image/writable/system-data/var/lib/snapd/snaps/", tmpDir), confKernel.value)
+	kernelSnap := findSnap(fmt.Sprintf("%s/image/writable/system-data/var/lib/snapd/snaps/", tmpDir), configs.Snaps.Kernel)
 	rplib.Shellexec("cp", "-f", kernelSnap, fmt.Sprintf("%s/kernel.snap", recoveryDir))
-	gadgetSnap := findSnap(fmt.Sprintf("%s/image/writable/system-data/var/lib/snapd/snaps/", tmpDir), confGadget.value)
+	gadgetSnap := findSnap(fmt.Sprintf("%s/image/writable/system-data/var/lib/snapd/snaps/", tmpDir), configs.Snaps.Gadget)
 	rplib.Shellexec("cp", "-f", gadgetSnap, fmt.Sprintf("%s/gadget.snap", recoveryDir))
-	osSnap := findSnap(fmt.Sprintf("%s/image/writable/system-data/var/lib/snapd/snaps/", tmpDir), confOs.value)
+	osSnap := findSnap(fmt.Sprintf("%s/image/writable/system-data/var/lib/snapd/snaps/", tmpDir), configs.Snaps.Os)
 	rplib.Shellexec("cp", "-f", osSnap, fmt.Sprintf("%s/os.snap", recoveryDir))
 
-	if confOemHookDir != "" {
-		log.Printf("[Create oem specific hooks]")
-		os.MkdirAll(recoveryDir+"/"+confOemHookDir, os.ModePerm)
+	if configs.Configs.OemHookDir != "" {
+		log.Printf("[Create oem specific hook directories]")
+		os.MkdirAll(recoveryDir+"/"+configs.Configs.OemHookDir, os.ModePerm)
 	}
 
 	log.Printf("[setup initrd.img and vmlinuz]")
@@ -285,6 +280,19 @@ func compressXZImage(imageFile string) {
 	log.Printf("[compress image: %s.xz]", imageFile)
 	rplib.Shellexec("xz", "-0", imageFile)
 }
+
+var (
+	optKernel    = "--kernel"
+	optOs        = "--os"
+	optGadget    = "--gadget"
+	optBaseImage = "--output"
+	optStore     = ""
+	optDevice    = ""
+	optChannel   = "--channel"
+	optSize      = "--size"
+	optDevmode   = ""
+	optSsh       = ""
+)
 
 // configs from yaml file
 type YamlConfigs struct {
@@ -298,16 +306,16 @@ type YamlConfigs struct {
 
 	Configs struct {
 		Arch         string
-		Baseimage    string
-		Recoverytype string
-		Recoverysize string
+		BaseImage    string
+		RecoveryType string
+		RecoverySize string
 		Release      string
 		Store        string
 		Device       string
 		Channel      string
 		Size         string
-		Oemhookdir   string
-		Oemlogdir    string
+		OemHookDir   string
+		OemLogDir    string
 	}
 
 	Udf struct {
@@ -332,138 +340,96 @@ type YamlConfigs struct {
 	}
 }
 
-type Config struct {
-	opt, value string
-}
+var configs YamlConfigs
 
-var (
-	confProject      string
-	confKernel       = Config{"--kernel", ""}
-	confOs           = Config{"--os", ""}
-	confGadget       = Config{"--gadget", ""}
-	confBaseImage    = Config{"--output", ""}
-	confRecoveryType string
-	confRecoverySize string
-	confRelease      string
-	confStore        = Config{"", ""}
-	confDevice       = Config{"", ""}
-	confChannel      = Config{"--channel", ""}
-	confSize         = Config{"--size", ""}
-	confOemHookDir   string
-	confOemLogDir    string
-	confUdfBinary    string
-	confUdfOption    string
-	confDevmode      bool
-	confSsh          bool
-	confXz           bool
-	confFsLabel      string
-)
-
-func parseConfigs(configs YamlConfigs) bool {
+func checkConfigs() bool {
 	fmt.Printf("parseConfig ... \n")
 
 	errCount := 0
 	if configs.Project == "" {
-		log.Println("Parse config.yaml failed, need to specify 'project' field")
+		log.Println("Error: parse config.yaml failed, need to specify 'project' field")
 		errCount++
 	}
 
 	if configs.Snaps.Kernel == "" {
-		log.Println("Parse config.yaml failed, need to specify 'snaps -> kernel' field")
+		log.Println("Error: parse config.yaml failed, need to specify 'snaps -> kernel' field")
 		errCount++
 	}
 
 	if configs.Snaps.Os == "" {
-		log.Println("Parse config.yaml failed, need to specify 'snaps -> os' field")
+		log.Println("Error: parse config.yaml failed, need to specify 'snaps -> os' field")
 		errCount++
 	}
 
 	if configs.Snaps.Gadget == "" {
-		log.Println("Parse config.yaml failed, need to specify 'snaps -> gadget' field")
+		log.Println("Error: parse config.yaml failed, need to specify 'snaps -> gadget' field")
 		errCount++
 	}
 
-	if configs.Configs.Baseimage == "" {
-		log.Println("Parse config.yaml failed, need to specify 'configs -> baseimage' field")
+	if configs.Configs.BaseImage == "" {
+		log.Println("Error: parse config.yaml failed, need to specify 'configs -> baseimage' field")
 		errCount++
 	}
 
-	if configs.Configs.Recoverytype == "" {
-		log.Println("Parse config.yaml failed, need to specify 'configs -> recoverytype' field")
+	if configs.Configs.RecoveryType == "" {
+		log.Println("Error: parse config.yaml failed, need to specify 'configs -> recoverytype' field")
 		errCount++
 	}
 
-	if configs.Configs.Recoverysize == "" {
-		log.Println("Parse config.yaml failed, need to specify 'configs -> recoverysize' field")
+	if configs.Configs.RecoverySize == "" {
+		log.Println("Error: parse config.yaml failed, need to specify 'configs -> recoverysize' field")
 		errCount++
 	}
 
 	if configs.Configs.Release == "" {
-		log.Println("Parse config.yaml failed, need to specify 'configs -> release' field")
+		log.Println("Error: parse config.yaml failed, need to specify 'configs -> release' field")
 		errCount++
 	}
 
 	if configs.Configs.Channel == "" {
-		log.Println("Parse config.yaml failed, need to specify 'configs -> channel' field")
+		log.Println("Error: parse config.yaml failed, need to specify 'configs -> channel' field")
 		errCount++
 	}
 
 	if configs.Configs.Size == "" {
-		log.Println("Parse config.yaml failed, need to specify 'configs -> size' field")
+		log.Println("Error: parse config.yaml failed, need to specify 'configs -> size' field")
 		errCount++
 	}
 
 	if configs.Udf.Binary == "" {
-		log.Println("Parse config.yaml failed, need to specify 'udf -> binary' field")
+		log.Println("Error: parse config.yaml failed, need to specify 'udf -> binary' field")
 		errCount++
 	}
 
 	if configs.Udf.Option == "" {
-		log.Println("Parse config.yaml failed, need to specify 'udf -> option' field")
+		log.Println("Error: parse config.yaml failed, need to specify 'udf -> option' field")
 		errCount++
 	}
 
 	if configs.Recovery.FsLabel == "" {
-		log.Println("Parse config.yaml failed, need to specify 'recovery -> filesystem-label' field")
+		log.Println("Error: parse config.yaml failed, need to specify 'recovery -> filesystem-label' field")
 		errCount++
 	}
 
 	if errCount > 0 {
-		log.Println("Parse error")
 		return true
 	}
 
-	confProject = configs.Project
-	confKernel.value = configs.Snaps.Kernel
-	confOs.value = configs.Snaps.Os
-	confGadget.value = configs.Snaps.Gadget
-	confBaseImage.value = configs.Configs.Baseimage
-	confRecoveryType = configs.Configs.Recoverytype
-	confRecoverySize = configs.Configs.Recoverysize
-	confRelease = configs.Configs.Release
-	confChannel.value = configs.Configs.Channel
-	confSize.value = configs.Configs.Size
-	confOemHookDir = configs.Configs.Oemhookdir
-	confOemLogDir = configs.Configs.Oemlogdir
-	confUdfBinary = configs.Udf.Binary
-	confUdfOption = configs.Udf.Option
-	confDevmode = configs.Debug.Devmode
-	confSsh = configs.Debug.Ssh
-	confXz = configs.Debug.Xz
-	confFsLabel = configs.Recovery.FsLabel
+	if configs.Debug.Devmode {
+		optDevmode = "--developer-mode"
+	}
+
+	if configs.Debug.Devmode {
+		optSsh = "--enable-ssh"
+	}
 
 	if configs.Configs.Store != "" {
-		confStore.opt = "--store"
-		confStore.value = configs.Configs.Store
+		optStore = "--store"
 	}
 
 	if configs.Configs.Device != "" {
-		confDevice.opt = "--device"
-		confDevice.value = configs.Configs.Device
+		optDevice = "--device"
 	}
-
-	confOemHookDir = configs.Configs.Oemhookdir
-	confOemLogDir = configs.Configs.Oemlogdir
 
 	return false
 }
@@ -471,35 +437,72 @@ func parseConfigs(configs YamlConfigs) bool {
 func printConfigs() {
 	fmt.Printf("Configs from yaml file\n")
 	fmt.Println("-----------------------------------------------")
-	fmt.Println("project: ", confProject)
-	fmt.Println("kernel: ", confKernel)
-	fmt.Println("os: ", confOs)
-	fmt.Println("gadget: ", confGadget)
-	fmt.Println("baseimage: ", confBaseImage)
-	fmt.Println("recoverytype: ", confRecoveryType)
-	fmt.Println("recoverysize: ", confRecoverySize)
-	fmt.Println("release: ", confRelease)
-	fmt.Println("store: ", confStore)
-	fmt.Println("device: ", confDevice)
-	fmt.Println("channel: ", confChannel)
-	fmt.Println("size: ", confSize)
-	fmt.Println("oemhookdir: ", confOemHookDir)
-	fmt.Println("oemlogdir: ", confOemLogDir)
-	fmt.Println("udf binary: ", confUdfBinary)
-	fmt.Println("udf option: ", confUdfOption)
-	fmt.Println("devmode: ", confDevmode)
-	fmt.Println("ssh: ", confSsh)
-	fmt.Println("xz: ", confXz)
-	fmt.Println("fslabel: ", confFsLabel)
+	fmt.Println("project: ", configs.Project)
+	fmt.Println("kernel: ", configs.Snaps.Kernel)
+	fmt.Println("os: ", configs.Snaps.Os)
+	fmt.Println("gadget: ", configs.Snaps.Gadget)
+	fmt.Println("baseimage: ", configs.Configs.BaseImage)
+	fmt.Println("recoverytype: ", configs.Configs.RecoveryType)
+	fmt.Println("recoverysize: ", configs.Configs.RecoverySize)
+	fmt.Println("release: ", configs.Configs.Release)
+	fmt.Println("store: ", configs.Configs.Store)
+	fmt.Println("device: ", configs.Configs.Device)
+	fmt.Println("channel: ", configs.Configs.Channel)
+	fmt.Println("size: ", configs.Configs.Size)
+	fmt.Println("oemhookdir: ", configs.Configs.OemHookDir)
+	fmt.Println("oemlogdir: ", configs.Configs.OemLogDir)
+	fmt.Println("udf binary: ", configs.Udf.Binary)
+	fmt.Println("udf option: ", configs.Udf.Option)
+	fmt.Println("devmode: ", configs.Debug.Devmode)
+	fmt.Println("ssh: ", configs.Debug.Ssh)
+	fmt.Println("xz: ", configs.Debug.Xz)
+	fmt.Println("fslabel: ", configs.Recovery.FsLabel)
+	fmt.Println("boot partition: ", configs.Recovery.BootPart)
+	fmt.Println("system-boot partition: ", configs.Recovery.SystembootPart)
+	fmt.Println("writable partition: ", configs.Recovery.WritablePart)
+	fmt.Println("boot image: ", configs.Recovery.BootImage)
+	fmt.Println("system-boot image: ", configs.Recovery.SystembootImage)
+	fmt.Println("writable image: ", configs.Recovery.WritableImage)
 	fmt.Println("-----------------------------------------------")
 }
 
+func loadYamlConfig(configFile string) (errBool bool) {
+	fmt.Printf("Loading config file %s ...\n", configFile)
+	filename, _ := filepath.Abs(configFile)
+	yamlFile, err := ioutil.ReadFile(filename)
+
+	if err != nil {
+		fmt.Printf("Error: can not load %s\n", configFile)
+		panic(err)
+	}
+
+	// Parse config.yaml and store in configs
+	err = yaml.Unmarshal(yamlFile, &configs)
+	if err != nil {
+		fmt.Printf("Error: parse %s failed\n", configFile)
+		panic(err)
+	}
+
+	// Check if there is any config missing
+	errBool = checkConfigs()
+	printConfigs()
+	return errBool
+}
+
+func printUsage() {
+	fmt.Println("")
+	fmt.Println("ubuntu-recovery-image CONFIG_FOLDER")
+	fmt.Println("CONFIG_FOLDER includes configurations to build the recovery image.")
+	fmt.Println("")
+}
+
 func main() {
+	// Print version
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	commitstampInt64, _ := strconv.ParseInt(commitstamp, 10, 64)
 	log.Printf("Version: %v, Commit: %v, Commit date: %v\n", version, commit, time.Unix(commitstampInt64, 0).UTC())
 
-	var configs YamlConfigs
+	// Load the config folder from the first parameter
 	var configFolder string
 
 	args := os.Args
@@ -508,58 +511,52 @@ func main() {
 	if numargs == 2 {
 		configFolder = args[1]
 	} else {
-		log.Fatal("You need to provide config folder.")
+		log.Fatal("Error: you need to provide config folder in the first parameter")
+		printUsage()
 	}
 
-	configFile := configFolder + "/config.yaml"
-	fmt.Printf("Loading config file %s ...\n", configFile)
-	filename, _ := filepath.Abs(configFile)
-	yamlFile, err := ioutil.ReadFile(filename)
-
-	if err != nil {
-		fmt.Printf("Can not load %s\n", configFile)
-		panic(err)
+	// Parse config.yaml to configs struct
+	errBool := loadYamlConfig(configFolder + "/config.yaml")
+	if errBool {
+		fmt.Println("Error: parse config.yaml failed")
+		os.Exit(1)
 	}
 
-	err = yaml.Unmarshal(yamlFile, &configs)
-	if err != nil {
-		fmt.Printf("Parse %s failed\n", configFile)
-		panic(err)
-	}
+	log.Printf("[Setup project for %s]", configs.Project)
 
-	errParse := parseConfigs(configs)
-	printConfigs()
-
-	if errParse {
-		return
-	}
-
-	log.Printf("[Setup project for %s]", confProject)
-
-	// Create base image or recovery image or both according to RecoveryType
-	if confRecoveryType == "base" || confRecoveryType == "full" {
+	// Create base image or recovery image or both according to 'recoverytype' field in config.yaml
+	if configs.Configs.RecoveryType == "base" || configs.Configs.RecoveryType == "full" {
 		createBaseImage()
-		if confRecoveryType == "base" {
-			log.Printf("[Create base image %s only]", confBaseImage.value)
+		if configs.Configs.RecoveryType == "base" {
+			log.Printf("[Create base image %s only]", configs.Configs.BaseImage)
 			os.Exit(0)
 		}
-	} else if confRecoveryType == "recovery" {
-		log.Printf("[Base image is %s]", confBaseImage.value)
+	} else if configs.Configs.RecoveryType == "recovery" {
+		log.Printf("[Base image is %s]", configs.Configs.BaseImage)
 	} else {
-		fmt.Printf("%q is not valid type.\n", confRecoveryType)
+		fmt.Printf("Error: %q is not valid type.\n", configs.Configs.RecoveryType)
 		os.Exit(2)
 	}
 
+	// Check if base image exists
+	if _, err := os.Stat(configs.Configs.BaseImage); err != nil {
+		fmt.Printf("Error: can not find base image: %s, please build base image first\n", configs.Configs.BaseImage)
+		os.Exit(2)
+	}
+
+	// Create recovery image if 'recoverytype' field is 'recovery' or 'full' in config.yaml
 	recoveryNR := "1"
 
-	log.Printf("[start create recovery image with skipxz options: %s.\n]", confXz)
+	log.Printf("[start create recovery image with skipxz options: %s.\n]", configs.Debug.Xz)
 
 	todayTime := time.Now()
 	todayDate := fmt.Sprintf("%d%02d%02d", todayTime.Year(), todayTime.Month(), todayTime.Day())
-	recoveryOutputFile := confProject + "-" + todayDate + "-0.img"
+	recoveryOutputFile := configs.Project + "-" + todayDate + "-0.img"
 
 	createRecoveryImage(recoveryNR, recoveryOutputFile, configFolder)
-	if confXz {
+
+	// Compress image to xz if 'xz' field is 'on' in config.yaml
+	if configs.Debug.Xz {
 		compressXZImage(recoveryOutputFile)
 	}
 }
