@@ -227,6 +227,8 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, configFol
 	rplib.Shellexec("cp", "-f", configFolder+"/data/grub.cfg", fmt.Sprintf("%s/efi/ubuntu/grub/grub.cfg", recoveryDir))
 
 	os.Mkdir(fmt.Sprintf("%s/recovery/", recoveryDir), 0755)
+	log.Printf("[add config.yaml]")
+	rplib.Shellexec("cp", "-f", configFolder+"/config.yaml", fmt.Sprintf("%s/recovery/", recoveryDir))
 	log.Printf("[add folder bin/]")
 	rplib.Shellexec("cp", "-r", configFolder+"/data/bin", fmt.Sprintf("%s/recovery/", recoveryDir))
 	log.Printf("[add factory snaps folder: factory/]")
@@ -287,7 +289,7 @@ func printUsage() {
 	fmt.Println("")
 }
 
-var configs rplib.ConfigAll
+var configs rplib.ConfigRecovery
 
 func main() {
 	// Print version
