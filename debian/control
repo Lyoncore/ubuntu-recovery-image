@@ -1,0 +1,20 @@
+Source: ubuntu-recovery-image
+Section: devel
+Priority: optional
+Maintainer: Canonical Commercial Engineering <commercial-engineering@canonical.com>
+Build-Depends: debhelper (>= 9),
+               bzr,
+               ca-certificates,
+               git,
+               golang-go,
+               rsync
+Standards-Version: 3.9.7
+Homepage: https://github.com/Lyoncore/ubuntu-recovery-image
+Vcs-Browser: https://github.com/Lyoncore/ubuntu-recovery-image
+Vcs-Git: https://github.com/Lyoncore/ubuntu-recovery-image.git
+
+Package: ubuntu-recovery-image
+Architecture: amd64
+Depends: ${misc:Depends}
+Description: Utils to generate snap recovery image
+
