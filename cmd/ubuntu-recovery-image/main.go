@@ -70,7 +70,7 @@ func findSnap(folder, name string) string {
 	return path
 }
 
-func setupInitrd(initrdImagePath string, tmpDir string, recoveryDir string) {
+func setupInitrd(initrdImagePath string, tmpDir string) {
 	log.Printf("[SETUP_INITRD]")
 
 	initrdTmpDir := fmt.Sprintf("%s/misc/initrd/", tmpDir)
@@ -85,7 +85,7 @@ func setupInitrd(initrdImagePath string, tmpDir string, recoveryDir string) {
 	rplib.Checkerr(err)
 	defer os.RemoveAll(kernelsnapTmpDir)
 
-	log.Printf("[copy kernel snap to recoveryDir]")
+	log.Printf("[locate kernel snap and mount]")
 	kernelSnapPath := findSnap(fmt.Sprintf("%s/image/writable/system-data/var/lib/snapd/snaps/", tmpDir), configs.Yaml.Snaps.Kernel)
 
 	rplib.Shellexec("mount", kernelSnapPath, kernelsnapTmpDir)
@@ -97,12 +97,19 @@ func setupInitrd(initrdImagePath string, tmpDir string, recoveryDir string) {
 
 	kerVer := rplib.Shellcmdoutput(fmt.Sprintf("basename %s/lib/modules/*", initrdTmpDir))
 
-	err = os.MkdirAll(fmt.Sprintf("%s/lib/modules/%s/kernel/fs/nls", initrdTmpDir, kerVer), 0755)
-	rplib.Checkerr(err)
+	nlsModule := fmt.Sprintf("/lib/modules/%s/kernel/fs/nls/nls_iso8859-1.ko", kerVer)
+	if _, err := os.Stat(initrdTmpDir + nlsModule); os.IsNotExist(err) {
+		// nls module didn't exist in initrd.img
+		// try to copy from kernel snap
+		if _, err := os.Stat(kernelsnapTmpDir + nlsModule); err == nil {
+			err = os.MkdirAll(filepath.Dir(kernelsnapTmpDir+nlsModule), 0755)
+			rplib.Checkerr(err)
 
-	rplib.Shellexec("cp", fmt.Sprintf("%s/lib/modules/%s/kernel/fs/nls/nls_iso8859-1.ko", kernelsnapTmpDir, kerVer), fmt.Sprintf("%s/lib/modules/%s/kernel/fs/nls/nls_iso8859-1.ko", initrdTmpDir, kerVer))
-	rplib.Shellexec("depmod", "-a", "-b", initrdTmpDir, kerVer)
-	_ = rplib.Shellcmdoutput(fmt.Sprintf("rm -f %s/lib/modules/*/modules.*map", initrdTmpDir))
+			rplib.Shellexec("cp", kernelsnapTmpDir+nlsModule, initrdTmpDir+nlsModule)
+			rplib.Shellexec("depmod", "-a", "-b", initrdTmpDir, kerVer)
+			_ = rplib.Shellcmdoutput(fmt.Sprintf("rm -f %s/lib/modules/*/modules.*map", initrdTmpDir))
+		}
+	}
 
 	log.Printf("[modify initrd ORDER file]")
 	orderFile := fmt.Sprintf("%s/scripts/local-premount/ORDER", initrdTmpDir)
@@ -274,7 +281,7 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string) {
 
 	log.Printf("[setup initrd.img and vmlinuz]")
 	initrdImagePath := fmt.Sprintf("%s/initrd.img", recoveryDir)
-	setupInitrd(initrdImagePath, tmpDir, recoveryDir)
+	setupInitrd(initrdImagePath, tmpDir)
 }
 
 func compressXZImage(imageFile string) {
