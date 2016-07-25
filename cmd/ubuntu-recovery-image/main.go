@@ -102,7 +102,7 @@ func setupInitrd(initrdImagePath string, tmpDir string) {
 		// nls module didn't exist in initrd.img
 		// try to copy from kernel snap
 		if _, err := os.Stat(kernelsnapTmpDir + nlsModule); err == nil {
-			err = os.MkdirAll(filepath.Dir(kernelsnapTmpDir+nlsModule), 0755)
+			err = os.MkdirAll(filepath.Dir(initrdTmpDir+nlsModule), 0755)
 			rplib.Checkerr(err)
 
 			rplib.Shellexec("cp", kernelsnapTmpDir+nlsModule, initrdTmpDir+nlsModule)
