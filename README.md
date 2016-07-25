@@ -21,7 +21,7 @@ $go run build.go build
 $git clone https://github.com/Lyoncore/generic-amd64-config.git
 $cd generic-amd64-config/
 $go run build.go build
-$sudo ./ubuntu-recovery-image
+$sudo $GOPATH/bin/ubuntu-recovery-image
 
 4. Run the image in kvm
 $sudo apt install -y qemu-kvm ovmf
