@@ -13,7 +13,7 @@ import (
 )
 
 import rplib "github.com/Lyoncore/ubuntu-recovery-rplib"
-import utils "../../utils"
+import utils "github.com/Lyoncore/ubuntu-recovery-image/utils"
 
 var version string
 var commit string

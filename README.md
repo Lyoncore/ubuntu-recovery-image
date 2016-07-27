@@ -35,5 +35,5 @@ $sudo kvm -m 512 -bios /usr/share/ovmf/OVMF.fd -vnc 0.0.0.0:1 ubuntu-recovery.im
 ## Sign Serial
 ```bash
 $ go run build.go build
-$ ./signserial -modelAssert modelAssertionMock.txt -target ./sign/
+$ ./signserial -modelAssert modelAssertionMock.txt -target ./sign/ -signServer http://localhost:8080/1.0/sign -apikey U2VyaWFsIFZhdWx0Cg
 ```
