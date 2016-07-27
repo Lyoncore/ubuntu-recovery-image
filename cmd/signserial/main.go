@@ -12,6 +12,7 @@ import (
 )
 
 import rplib "github.com/Lyoncore/ubuntu-recovery-rplib"
+import utils "github.com/Lyoncore/ubuntu-recovery-image/utils"
 
 var version string
 var commit string
@@ -21,6 +22,9 @@ var build_date string
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
+	if "" == version {
+		version = utils.Version
+	}
 	commitstampInt64, _ := strconv.ParseInt(commitstamp, 10, 64)
 	log.Printf("Version: %v, Commit: %v, Build date: %v\n", version, commit, time.Unix(commitstampInt64, 0).UTC())
 	fmt.Println("You could feed entropy using rngd when testing. e.g.:")
