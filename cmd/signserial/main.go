@@ -46,7 +46,8 @@ func main() {
 	rplib.Checkerr(err)
 
 	if "" != *signServer {
-		rplib.SignSerial(modelAssertion, *targetFolder, *signServer, *apikey)
+		err = rplib.SignSerial(modelAssertion, *targetFolder, *signServer, *apikey)
+		rplib.Checkerr(err)
 	} else {
 		content, err := rplib.SerialAssertionGen(modelAssertion, *targetFolder)
 		rplib.Checkerr(err)
