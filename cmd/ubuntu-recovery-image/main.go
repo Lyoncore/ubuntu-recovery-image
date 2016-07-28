@@ -233,6 +233,8 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string) {
 	log.Printf("[create/overwrite grub.cfg]")
 	rplib.Shellexec("cp", "-f", "data/grub.cfg", fmt.Sprintf("%s/efi/ubuntu/grub/grub.cfg", recoveryDir))
 
+	os.Mkdir(fmt.Sprintf("%s/oemlog", recoveryDir), 0755)
+
 	os.Mkdir(fmt.Sprintf("%s/recovery/", recoveryDir), 0755)
 	log.Printf("[add config.yaml]")
 	rplib.Shellexec("cp", "-f", "config.yaml", fmt.Sprintf("%s/recovery/", recoveryDir))
