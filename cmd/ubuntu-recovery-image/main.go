@@ -13,6 +13,7 @@ import (
 )
 
 import rplib "github.com/Lyoncore/ubuntu-recovery-rplib"
+import utils "github.com/Lyoncore/ubuntu-recovery-image/utils"
 
 var version string
 var commit string
@@ -303,6 +304,11 @@ var configs rplib.ConfigRecovery
 func main() {
 	// Print version
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
+
+	if "" == version {
+		version = utils.Version
+	}
+
 	commitstampInt64, _ := strconv.ParseInt(commitstamp, 10, 64)
 	log.Printf("Version: %v, Commit: %v, Commit date: %v\n", version, commit, time.Unix(commitstampInt64, 0).UTC())
 

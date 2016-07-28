@@ -12,6 +12,7 @@ import (
 )
 
 import rplib "github.com/Lyoncore/ubuntu-recovery-rplib"
+import utils "github.com/Lyoncore/ubuntu-recovery-image/utils"
 
 var version string
 var commit string
@@ -21,6 +22,9 @@ var build_date string
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
+	if "" == version {
+		version = utils.Version
+	}
 	commitstampInt64, _ := strconv.ParseInt(commitstamp, 10, 64)
 	log.Printf("Version: %v, Commit: %v, Build date: %v\n", version, commit, time.Unix(commitstampInt64, 0).UTC())
 	fmt.Println("You could feed entropy using rngd when testing. e.g.:")
@@ -28,6 +32,8 @@ func main() {
 
 	modelAssertionFile := flag.String("modelAssert", "", "file of model assertion")
 	targetFolder := flag.String("target", "", "target folder to store serial assertion")
+	apikey := flag.String("apikey", "", "apikey of signing server")
+	signServer := flag.String("signServer", "", "url of signing server")
 	flag.Parse()
 
 	if "" == *targetFolder {
@@ -39,8 +45,12 @@ func main() {
 	modelAssertion, err := asserts.Decode(fileContent)
 	rplib.Checkerr(err)
 
-	content, err := rplib.SerialAssertionGen(modelAssertion, *targetFolder)
-	rplib.Checkerr(err)
-	err = ioutil.WriteFile(*targetFolder+"/"+rplib.SerialUnsigned, []byte(content), 0600)
-	rplib.Checkerr(err)
+	if "" != *signServer {
+		rplib.SignSerial(modelAssertion, *targetFolder, *signServer, *apikey)
+	} else {
+		content, err := rplib.SerialAssertionGen(modelAssertion, *targetFolder)
+		rplib.Checkerr(err)
+		err = ioutil.WriteFile(*targetFolder+"/"+rplib.SerialUnsigned, []byte(content), 0600)
+		rplib.Checkerr(err)
+	}
 }
