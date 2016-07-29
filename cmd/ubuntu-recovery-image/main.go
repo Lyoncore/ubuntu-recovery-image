@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"syscall"
 	"time"
+
+	"gopkg.in/yaml.v2"
 )
 
 import rplib "github.com/Lyoncore/ubuntu-recovery-rplib"
@@ -18,7 +20,6 @@ import utils "github.com/Lyoncore/ubuntu-recovery-image/utils"
 var version string
 var commit string
 var commitstamp string
-var build_date string
 
 // setupLoopDevice setup loop device for base image and recovery image.
 func setupLoopDevice(recoveryOutputFile string, recoveryNR string) (string, string) {
@@ -158,7 +159,7 @@ func createBaseImage() {
 		configs.Opt.Gadget, configs.Yaml.Snaps.Gadget)
 }
 
-func createRecoveryImage(recoveryNR string, recoveryOutputFile string) {
+func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstamp utils.BuildStamp) {
 	// Setup loop devices
 	baseImageLoop, recoveryImageLoop := setupLoopDevice(recoveryOutputFile, recoveryNR)
 	// Delete loop devices
@@ -219,6 +220,12 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string) {
 			defer syscall.Unmount(baseDir, 0)
 		}
 	}
+
+	log.Printf("save buildstamp")
+	d, err := yaml.Marshal(&buildstamp)
+	rplib.Checkerr(err)
+	err = ioutil.WriteFile(filepath.Join(recoveryDir, utils.BuildStampFile), d, 0755)
+	rplib.Checkerr(err)
 
 	log.Printf("[deploy default efi bootdir]")
 
@@ -316,6 +323,7 @@ func main() {
 	}
 
 	commitstampInt64, _ := strconv.ParseInt(commitstamp, 10, 64)
+	var buildstamp = utils.BuildStamp{version, commit, time.Unix(commitstampInt64, 0).UTC(), time.Now().UTC()}
 	log.Printf("Version: %v, Commit: %v, Commit date: %v\n", version, commit, time.Unix(commitstampInt64, 0).UTC())
 
 	// Parse config.yaml
@@ -357,7 +365,7 @@ func main() {
 	todayDate := fmt.Sprintf("%d%02d%02d", todayTime.Year(), todayTime.Month(), todayTime.Day())
 	recoveryOutputFile := configs.Yaml.Project + "-" + todayDate + "-0.img"
 
-	createRecoveryImage(recoveryNR, recoveryOutputFile)
+	createRecoveryImage(recoveryNR, recoveryOutputFile, buildstamp)
 
 	// Compress image to xz if 'xz' field is 'on' in config.yaml
 	if configs.Yaml.Debug.Xz {

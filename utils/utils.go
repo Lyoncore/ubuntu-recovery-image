@@ -19,5 +19,17 @@
 
 package utils
 
+import (
+	"time"
+)
+
 // Set the application version from a constant
 const Version = "0.1.0"
+const BuildStampFile = "buildstamp"
+
+type BuildStamp struct {
+	Version     string
+	Commit      string
+	CommitStamp time.Time
+	BuildDate   time.Time
+}
