@@ -59,7 +59,12 @@ func setupLoopDevice(recoveryOutputFile string, recoveryNR string) (string, stri
 	return baseImageLoop, recoveryImageLoop
 }
 
-func findSnap(folder, name string) string {
+func findSnap(folder, input string) string {
+	name := rplib.FindSnapName(input)
+
+	if "" == name {
+		name = input
+	}
 	log.Printf("findSnap: %s/%s_*.snap", folder, name)
 	paths, err := filepath.Glob(fmt.Sprintf("%s/%s_*.snap", folder, name))
 	rplib.Checkerr(err)
@@ -88,9 +93,7 @@ func setupInitrd(initrdImagePath string, tmpDir string) {
 	defer os.RemoveAll(kernelsnapTmpDir)
 
 	log.Printf("[locate kernel snap and mount]")
-	// TODO: find kernel with 'canonical-pc-linux_*' without version, see findSnap, any kernel snap version will be renamed to 0
-	//       like canonical-pc-linux_0.snap, so this is a workaround, if this is changed by snappy team, need to re-write here
-	kernelSnapPath := findSnap(fmt.Sprintf("%s/image/writable/system-data/var/lib/snapd/snaps/", tmpDir), "canonical-pc-linux")
+	kernelSnapPath := findSnap(fmt.Sprintf("%s/image/writable/system-data/var/lib/snapd/snaps/", tmpDir), configs.Yaml.Snaps.Kernel)
 
 	rplib.Shellexec("mount", kernelSnapPath, kernelsnapTmpDir)
 	defer syscall.Unmount(kernelsnapTmpDir, 0)
@@ -273,9 +276,7 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string) {
 	}
 
 	// copy kernel, gadget, os snap
-	// TODO: find kernel with 'canonical-pc-linux_*' without version, see findSnap, any kernel snap version will be renamed to 0
-	//       like canonical-pc-linux_0.snap, so this is a workaround, if this is changed by snappy team, need to re-write here
-	kernelSnap := findSnap(fmt.Sprintf("%s/image/writable/system-data/var/lib/snapd/snaps/", tmpDir), "canonical-pc-linux")
+	kernelSnap := findSnap(fmt.Sprintf("%s/image/writable/system-data/var/lib/snapd/snaps/", tmpDir), configs.Yaml.Snaps.Kernel)
 	rplib.Shellexec("cp", "-f", kernelSnap, fmt.Sprintf("%s/kernel.snap", recoveryDir))
 	gadgetSnap := findSnap(fmt.Sprintf("%s/image/writable/system-data/var/lib/snapd/snaps/", tmpDir), configs.Yaml.Snaps.Gadget)
 	rplib.Shellexec("cp", "-f", gadgetSnap, fmt.Sprintf("%s/gadget.snap", recoveryDir))
