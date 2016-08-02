@@ -70,7 +70,7 @@ func findSnap(folder, input string) string {
 	paths, err := filepath.Glob(fmt.Sprintf("%s/%s_*.snap", folder, name))
 	rplib.Checkerr(err)
 	if 1 != len(paths) {
-		log.Print(paths)
+		log.Println("paths:", paths)
 		log.Panic("Should have one and only one specified snap")
 	}
 	path := paths[0]
@@ -106,14 +106,14 @@ func setupInitrd(initrdImagePath string, tmpDir string) {
 	kerVer := rplib.Shellcmdoutput(fmt.Sprintf("basename %s/lib/modules/*", initrdTmpDir))
 
 	nlsModule := fmt.Sprintf("/lib/modules/%s/kernel/fs/nls/nls_iso8859-1.ko", kerVer)
-	if _, err := os.Stat(initrdTmpDir + nlsModule); os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(initrdTmpDir, nlsModule)); os.IsNotExist(err) {
 		// nls module didn't exist in initrd.img
 		// try to copy from kernel snap
-		if _, err := os.Stat(kernelsnapTmpDir + nlsModule); err == nil {
-			err = os.MkdirAll(filepath.Dir(initrdTmpDir+nlsModule), 0755)
+		if _, err := os.Stat(filepath.Join(kernelsnapTmpDir, nlsModule)); err == nil {
+			err = os.MkdirAll(filepath.Dir(filepath.Join(initrdTmpDir, nlsModule)), 0755)
 			rplib.Checkerr(err)
 
-			rplib.Shellexec("cp", kernelsnapTmpDir+nlsModule, initrdTmpDir+nlsModule)
+			rplib.Shellexec("cp", filepath.Join(kernelsnapTmpDir, nlsModule), filepath.Join(initrdTmpDir, nlsModule))
 			rplib.Shellexec("depmod", "-a", "-b", initrdTmpDir, kerVer)
 			_ = rplib.Shellcmdoutput(fmt.Sprintf("rm -f %s/lib/modules/*/modules.*map", initrdTmpDir))
 		}
@@ -214,6 +214,7 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 
 			log.Printf("[mount device %s on base image dir %s]", part, label)
 			fstype := rplib.Shellexecoutput("blkid", part, "-o", "value", "-s", "TYPE")
+			log.Println("fstype:", fstype)
 			err = syscall.Mount(part, baseDir, fstype, 0, "")
 			rplib.Checkerr(err)
 
