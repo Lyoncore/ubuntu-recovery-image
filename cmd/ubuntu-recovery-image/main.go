@@ -259,6 +259,16 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 	log.Printf("[add folder assertions/]")
 	rplib.Shellexec("cp", "-r", "data/assertions", fmt.Sprintf("%s/recovery/", recoveryDir))
 
+	if configs.Yaml.Configs.OemPreinstHookDir != "" {
+		log.Printf("[Create oem specific pre-install hook directory]")
+		os.Mkdir(fmt.Sprintf("%s/recovery/factory/%s", recoveryDir, configs.Yaml.Configs.OemPreinstHookDir), 0755)
+	}
+
+	if configs.Yaml.Configs.OemPostinstHookDir != "" {
+		log.Printf("[Create oem specific post-install hook directory]")
+		os.Mkdir(fmt.Sprintf("%s/recovery/factory/%s", recoveryDir, configs.Yaml.Configs.OemPostinstHookDir), 0755)
+	}
+
 	if configs.Yaml.Recovery.SystembootImage != "" && configs.Yaml.Recovery.WritableImage != "" {
 		log.Printf("Copy user provided system-boot (%s) and writable (%s) images to %s/recovery/factory directory\n",
 			configs.Yaml.Recovery.SystembootImage, configs.Yaml.Recovery.WritableImage, recoveryDir)
@@ -289,11 +299,6 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 	rplib.Shellexec("cp", "-f", gadgetSnap, fmt.Sprintf("%s/gadget.snap", recoveryDir))
 	osSnap := findSnap(fmt.Sprintf("%s/image/writable/system-data/var/lib/snapd/snaps/", tmpDir), configs.Yaml.Snaps.Os)
 	rplib.Shellexec("cp", "-f", osSnap, fmt.Sprintf("%s/os.snap", recoveryDir))
-
-	if configs.Yaml.Configs.OemHookDir != "" {
-		log.Printf("[Create oem specific hook directories]")
-		os.MkdirAll(recoveryDir+"/"+configs.Yaml.Configs.OemHookDir, os.ModePerm)
-	}
 
 	log.Printf("[setup initrd.img and vmlinuz]")
 	initrdImagePath := fmt.Sprintf("%s/initrd.img", recoveryDir)
