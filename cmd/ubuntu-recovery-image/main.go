@@ -225,7 +225,7 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 	log.Printf("save buildstamp")
 	d, err := yaml.Marshal(&buildstamp)
 	rplib.Checkerr(err)
-	err = ioutil.WriteFile(filepath.Join(recoveryDir, utils.BuildStampFile), d, 0755)
+	err = ioutil.WriteFile(filepath.Join(recoveryDir, utils.BuildStampFile), d, 0644)
 	rplib.Checkerr(err)
 
 	log.Printf("[deploy default efi bootdir]")
@@ -329,7 +329,19 @@ func main() {
 	}
 
 	commitstampInt64, _ := strconv.ParseInt(commitstamp, 10, 64)
-	var buildstamp = utils.BuildStamp{version, commit, time.Unix(commitstampInt64, 0).UTC(), time.Now().UTC()}
+	var buildstamp = utils.BuildStamp{
+		BuildDate: time.Now().UTC(),
+		BuildTool: utils.ProjectInfo{
+			Version:     version,
+			Commit:      commit,
+			CommitStamp: time.Unix(commitstampInt64, 0).UTC(),
+		},
+		BuildConfig: utils.ProjectInfo{
+			Version:     utils.ReadVersionFromPackageJson(),
+			Commit:      utils.GetGitSha(),
+			CommitStamp: time.Unix(utils.CommitStamp(), 0).UTC(),
+		},
+	}
 	log.Printf("Version: %v, Commit: %v, Commit date: %v\n", version, commit, time.Unix(commitstampInt64, 0).UTC())
 
 	// Parse config.yaml
