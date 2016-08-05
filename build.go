@@ -57,7 +57,9 @@ func main() {
 
 		case "build":
 			clean()
-			build("ubuntu-recovery-image", "ubuntu-recovery-image.go", []string{})
+			build("ubuntu-recovery-image", "./cmd/ubuntu-recovery-image/", []string{})
+			runPrint("cp", "ubuntu-recovery-image", os.Getenv("GOPATH")+"/bin/")
+			build("signserial", "./cmd/signserial/", []string{})
 
 		case "clean":
 			clean()
@@ -143,12 +145,6 @@ func setBuildEnv() {
 	if goarch == "386" {
 		os.Setenv("GO386", "387")
 	}
-	wd, err := os.Getwd()
-	if err != nil {
-		log.Println("Warning: can't determine current dir:", err)
-		log.Println("Build might not work as expected")
-	}
-	os.Setenv("GOPATH", fmt.Sprintf("%s%c%s", filepath.Join(wd, "Godeps", "_workspace"), os.PathListSeparator, os.Getenv("GOPATH")))
 	log.Println("GOPATH=" + os.Getenv("GOPATH"))
 }
 
