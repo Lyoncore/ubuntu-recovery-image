@@ -1,5 +1,5 @@
 name: signserial
-version: 0.1
+version: 0.2
 summary: Signserial utility
 description: Utitlity for signing serial assertion
 confinement: devmode
