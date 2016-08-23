@@ -22,7 +22,7 @@ var commit string
 var commitstamp string
 
 // setupLoopDevice setup loop device for base image and recovery image.
-func setupLoopDevice(recoveryOutputFile string, recoveryNR string) (string, string) {
+func setupLoopDevice(recoveryOutputFile string, recoveryNR string, label string) (string, string) {
 	log.Printf("[SETUP_LOOPDEVICE]")
 	basefile, err := os.Open(configs.Yaml.Configs.BaseImage)
 	rplib.Checkerr(err)
@@ -53,7 +53,7 @@ func setupLoopDevice(recoveryOutputFile string, recoveryNR string) (string, stri
 		"unit", "MiB",
 		"mklabel", "gpt",
 		"mkpart", "primary", "fat32", fmt.Sprintf("%d", recoveryBegin), fmt.Sprintf("%d", recoveryEnd),
-		"name", recoveryNR, configs.Yaml.Recovery.FsLabel,
+		"name", recoveryNR, label,
 		"set", recoveryNR, "boot", "on",
 		"print")
 
@@ -160,8 +160,16 @@ func createBaseImage() {
 }
 
 func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstamp utils.BuildStamp) {
+	var label string
+	switch configs.Yaml.Recovery.Type {
+	case rplib.FIELD_TRANSITION:
+		label = configs.Yaml.Recovery.TransitionFsLabel
+	default:
+		label = configs.Yaml.Recovery.FsLabel
+	}
+
 	// Setup loop devices
-	baseImageLoop, recoveryImageLoop := setupLoopDevice(recoveryOutputFile, recoveryNR)
+	baseImageLoop, recoveryImageLoop := setupLoopDevice(recoveryOutputFile, recoveryNR, label)
 	// Delete loop devices
 	defer rplib.Shellcmd(fmt.Sprintf("losetup -d /dev/%s", baseImageLoop))
 	defer rplib.Shellcmd(fmt.Sprintf("losetup -d /dev/%s", recoveryImageLoop))
@@ -179,7 +187,7 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 
 	// TODO: rewritten with launchpad/goget-ubuntu-touch/DiskImage image.Create
 	log.Printf("[mkfs.fat]")
-	rplib.Shellexec("mkfs.fat", "-F", "32", "-n", configs.Yaml.Recovery.FsLabel, fmt.Sprintf("/dev/mapper/%sp%s", recoveryImageLoop, recoveryNR))
+	rplib.Shellexec("mkfs.fat", "-F", "32", "-n", label, filepath.Join("/dev/mapper", fmt.Sprintf("%sp%s", recoveryImageLoop, recoveryNR)))
 
 	tmpDir, err := ioutil.TempDir("", "")
 	rplib.Checkerr(err)
@@ -237,9 +245,8 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 	log.Printf("[create grubenv for switching between core and recovery system]")
 	rplib.Shellexec("grub-editenv", fmt.Sprintf("%s/efi/ubuntu/grub/grubenv", recoveryDir), "create")
 	rplib.Shellexec("grub-editenv", fmt.Sprintf("%s/efi/ubuntu/grub/grubenv", recoveryDir), "set", "firstfactoryrestore=no")
-	rplib.Shellexec("grub-editenv", fmt.Sprintf("%s/efi/ubuntu/grub/grubenv", recoveryDir), "set", fmt.Sprintf("recoverylabel=%s", configs.Yaml.Recovery.FsLabel))
-
-	rplib.Shellexec("grub-editenv", fmt.Sprintf("%s/efi/ubuntu/grub/grubenv", recoveryDir), "set", "recoverytype=factory_install")
+	rplib.Shellexec("grub-editenv", fmt.Sprintf("%s/efi/ubuntu/grub/grubenv", recoveryDir), "set", "recoverylabel="+label)
+	rplib.Shellexec("grub-editenv", fmt.Sprintf("%s/efi/ubuntu/grub/grubenv", recoveryDir), "set", "recoverytype="+configs.Yaml.Recovery.Type)
 
 	log.Printf("[setup recovery uuid]")
 	recoveryUUID := rplib.Shellexecoutput("blkid", recoveryMapperDevice, "-o", "value", "-s", "UUID")
@@ -290,7 +297,8 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 		rplib.Checkerr(err)
 		rplib.Shellexec("tar", "--xattrs", "-Jcpf", fmt.Sprintf("%s/recovery/factory/writable.tar.xz", recoveryDir), ".")
 
-		os.Chdir(workingDir)
+		err = os.Chdir(workingDir)
+		rplib.Checkerr(err)
 	}
 
 	// copy kernel, gadget, os snap
