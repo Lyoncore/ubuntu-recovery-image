@@ -146,7 +146,7 @@ func createBaseImage() {
 		os.Remove(configs.Yaml.Configs.BaseImage)
 	}
 
-	rplib.Shellexec(configs.Yaml.Udf.Binary, configs.Yaml.Udf.Option, configs.Yaml.Configs.Release,
+	rplib.Shellexec(configs.Yaml.Udf.Binary, configs.Yaml.Udf.Command, configs.Yaml.Configs.Release,
 		configs.Opt.Store, configs.Yaml.Configs.Store,
 		configs.Opt.Device, configs.Yaml.Configs.Device,
 		configs.Opt.Channel, configs.Yaml.Configs.Channel,
@@ -252,9 +252,6 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 	recoveryUUID := rplib.Shellexecoutput("blkid", recoveryMapperDevice, "-o", "value", "-s", "UUID")
 	rplib.Shellexec("grub-editenv", fmt.Sprintf("%s/efi/ubuntu/grub/grubenv", recoveryDir), "set", fmt.Sprintf("recoveryuuid=%s", recoveryUUID))
 
-	log.Printf("[create/overwrite grub.cfg]")
-	rplib.Shellexec("cp", "-f", "data/grub.cfg", fmt.Sprintf("%s/efi/ubuntu/grub/grub.cfg", recoveryDir))
-
 	os.Mkdir(fmt.Sprintf("%s/oemlog", recoveryDir), 0755)
 
 	os.Mkdir(fmt.Sprintf("%s/recovery/", recoveryDir), 0755)
@@ -262,10 +259,8 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 	rplib.Shellexec("cp", "-f", "config.yaml", fmt.Sprintf("%s/recovery/", recoveryDir))
 	log.Printf("[add folder bin/]")
 	rplib.Shellexec("cp", "-r", "data/bin", fmt.Sprintf("%s/recovery/", recoveryDir))
-	log.Printf("[add factory snaps folder: factory/]")
-	rplib.Shellexec("cp", "-r", "data/factory", fmt.Sprintf("%s/recovery/", recoveryDir))
-	log.Printf("[add folder assertions/]")
-	rplib.Shellexec("cp", "-r", "data/assertions", fmt.Sprintf("%s/recovery/", recoveryDir))
+	log.Printf("[add local-includes]")
+	rplib.Shellexec("rsync", "-a", "data/local-includes/", recoveryDir)
 
 	if configs.Yaml.Configs.OemPreinstHookDir != "" {
 		log.Printf("[Create oem specific pre-install hook directory]")
