@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -146,17 +147,7 @@ func createBaseImage() {
 		os.Remove(configs.Yaml.Configs.BaseImage)
 	}
 
-	rplib.Shellexec(configs.Yaml.Udf.Binary, configs.Yaml.Udf.Command, configs.Yaml.Configs.Release,
-		configs.Opt.Store, configs.Yaml.Configs.Store,
-		configs.Opt.Device, configs.Yaml.Configs.Device,
-		configs.Opt.Channel, configs.Yaml.Configs.Channel,
-		configs.Opt.BaseImage, configs.Yaml.Configs.BaseImage,
-		configs.Opt.Ssh,
-		configs.Opt.Size, configs.Yaml.Configs.Size,
-		configs.Opt.Devmode,
-		configs.Opt.Kernel, configs.Yaml.Snaps.Kernel,
-		configs.Opt.Os, configs.Yaml.Snaps.Os,
-		configs.Opt.Gadget, configs.Yaml.Snaps.Gadget)
+	configs.ExecuteUDF()
 }
 
 func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstamp utils.BuildStamp) {
@@ -384,12 +375,14 @@ func main() {
 
 	todayTime := time.Now()
 	todayDate := fmt.Sprintf("%d%02d%02d", todayTime.Year(), todayTime.Month(), todayTime.Day())
-	recoveryOutputFile := configs.Yaml.Project + "-" + todayDate + "-0.img"
+	defaultOutputFilename := configs.Yaml.Project + "-" + todayDate + "-0.img"
+	recoveryOutputFile := flag.String("o", defaultOutputFilename, "Name of the recovery image file to create")
+	flag.Parse()
 
-	createRecoveryImage(recoveryNR, recoveryOutputFile, buildstamp)
+	createRecoveryImage(recoveryNR, *recoveryOutputFile, buildstamp)
 
 	// Compress image to xz if 'xz' field is 'on' in config.yaml
 	if configs.Yaml.Debug.Xz {
-		compressXZImage(recoveryOutputFile)
+		compressXZImage(*recoveryOutputFile)
 	}
 }
