@@ -168,13 +168,13 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 
 	// Create device maps from partition tables
 	log.Printf("[kpartx]")
-	rplib.Shellexec("kpartx", "-a", fmt.Sprintf("/dev/%s", baseImageLoop))
-	rplib.Shellexec("kpartx", "-a", fmt.Sprintf("/dev/%s", recoveryImageLoop))
+	rplib.Shellexec("kpartx", "-avs", fmt.Sprintf("/dev/%s", baseImageLoop))
+	rplib.Shellexec("kpartx", "-avs", fmt.Sprintf("/dev/%s", recoveryImageLoop))
 	rplib.Shellexec("udevadm", "settle")
 	// Delete device maps
 	defer rplib.Shellexec("udevadm", "settle")
-	defer rplib.Shellexec("kpartx", "-d", fmt.Sprintf("/dev/%s", recoveryImageLoop))
-	defer rplib.Shellexec("kpartx", "-d", fmt.Sprintf("/dev/%s", baseImageLoop))
+	defer rplib.Shellexec("kpartx", "-ds", fmt.Sprintf("/dev/%s", recoveryImageLoop))
+	defer rplib.Shellexec("kpartx", "-ds", fmt.Sprintf("/dev/%s", baseImageLoop))
 
 	// TODO: rewritten with launchpad/goget-ubuntu-touch/DiskImage image.Create
 	log.Printf("[mkfs.fat]")
