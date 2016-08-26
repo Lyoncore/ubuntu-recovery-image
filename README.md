@@ -14,6 +14,7 @@ $go get launchpad.net/godeps
 
 2. Build ubuntu-recovery-image
 $git clone https://github.com/Lyoncore/ubuntu-recovery-image.git
+$cd ubuntu-recovery-image/
 $godeps -t -u dependencies.tsv
 $go run build.go build
 
