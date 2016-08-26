@@ -251,7 +251,7 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 	log.Printf("[add folder bin/]")
 	rplib.Shellexec("cp", "-r", "data/bin", fmt.Sprintf("%s/recovery/", recoveryDir))
 	log.Printf("[add local-includes]")
-	rplib.Shellexec("rsync", "-a", "data/local-includes/", recoveryDir)
+	rplib.Shellexec("rsync", "-r", "data/local-includes/", recoveryDir)
 
 	if configs.Yaml.Configs.OemPreinstHookDir != "" {
 		log.Printf("[Create oem specific pre-install hook directory]")
