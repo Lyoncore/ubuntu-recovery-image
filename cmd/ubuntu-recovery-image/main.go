@@ -25,28 +25,29 @@ var commitstamp string
 // setupLoopDevice setup loop device for base image and recovery image.
 func setupLoopDevice(recoveryOutputFile string, recoveryNR string, label string) (string, string) {
 	log.Printf("[SETUP_LOOPDEVICE]")
-	basefile, err := os.Open(configs.Yaml.Configs.BaseImage)
+	basefile, err := os.Open(configs.Configs.BaseImage)
 	rplib.Checkerr(err)
 	defer basefile.Close()
 	basefilest, err := basefile.Stat()
 	rplib.Checkerr(err)
 
-	log.Printf("fallocate %d bytes for %q\n", basefilest.Size(), configs.Yaml.Configs.BaseImage)
+	log.Printf("fallocate %d bytes for %q\n", basefilest.Size(), configs.Configs.BaseImage)
 	outputfile, err := os.Create(recoveryOutputFile)
 	rplib.Checkerr(err)
 	defer outputfile.Close()
+	err = syscall.Fallocate(int(outputfile.Fd()), 0, 0, basefilest.Size())
+	rplib.Checkerr(err)
 
-	syscall.Fallocate(int(outputfile.Fd()), 0, 0, basefilest.Size())
 	log.Printf("[setup a loopback device for recovery image %s]", recoveryOutputFile)
 	recoveryImageLoop := rplib.Shellcmdoutput(fmt.Sprintf("losetup --find --show %s | xargs basename", recoveryOutputFile))
 
 	log.Printf("[setup a readonly loopback device for base image]")
-	baseImageLoop := rplib.Shellcmdoutput(fmt.Sprintf("losetup -r --find --show %s | xargs basename", configs.Yaml.Configs.BaseImage))
+	baseImageLoop := rplib.Shellcmdoutput(fmt.Sprintf("losetup -r --find --show %s | xargs basename", configs.Configs.BaseImage))
 
 	log.Printf("[create %s partition on %s]", recoveryOutputFile, recoveryImageLoop)
 
 	recoveryBegin := 4
-	recoverySize, err := strconv.Atoi(configs.Yaml.Configs.RecoverySize)
+	recoverySize, err := strconv.Atoi(configs.Configs.RecoverySize)
 	rplib.Checkerr(err)
 	recoveryEnd := recoveryBegin + recoverySize
 
@@ -61,9 +62,15 @@ func setupLoopDevice(recoveryOutputFile string, recoveryNR string, label string)
 	return baseImageLoop, recoveryImageLoop
 }
 
+// find snap with input name
+// input example:
+//   - ubuntu-core_144.snap
+//   - ubuntu-core
 func findSnap(folder, input string) string {
 	name := rplib.FindSnapName(input)
 
+	// input is not a snap package file name
+	// should be a package name (such as "ubuntu-core")
 	if "" == name {
 		name = input
 	}
@@ -95,7 +102,7 @@ func setupInitrd(initrdImagePath string, tmpDir string) {
 	defer os.RemoveAll(kernelsnapTmpDir)
 
 	log.Printf("[locate kernel snap and mount]")
-	kernelSnapPath := findSnap(fmt.Sprintf("%s/image/writable/system-data/var/lib/snapd/snaps/", tmpDir), configs.Yaml.Snaps.Kernel)
+	kernelSnapPath := findSnap(filepath.Join(tmpDir, "image/writable/system-data/var/lib/snapd/snaps/"), configs.Snaps.Kernel)
 
 	rplib.Shellexec("mount", kernelSnapPath, kernelsnapTmpDir)
 	defer syscall.Unmount(kernelsnapTmpDir, 0)
@@ -140,11 +147,11 @@ func setupInitrd(initrdImagePath string, tmpDir string) {
 }
 
 func createBaseImage() {
-	fmt.Printf("Create base image, channel: %s\n", configs.Yaml.Configs.Channel)
+	log.Println("Create base image, channel: %s", configs.Configs.Channel)
 
-	if _, err := os.Stat(configs.Yaml.Configs.BaseImage); err == nil {
-		fmt.Printf("The file %s exist, remove the file.\n", configs.Yaml.Configs.BaseImage)
-		os.Remove(configs.Yaml.Configs.BaseImage)
+	if _, err := os.Stat(configs.Configs.BaseImage); err == nil {
+		log.Println("The file %s exist, remove the file.", configs.Configs.BaseImage)
+		os.Remove(configs.Configs.BaseImage)
 	}
 
 	configs.ExecuteUDF()
@@ -152,11 +159,11 @@ func createBaseImage() {
 
 func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstamp utils.BuildStamp) {
 	var label string
-	switch configs.Yaml.Recovery.Type {
+	switch configs.Recovery.Type {
 	case rplib.FIELD_TRANSITION:
-		label = configs.Yaml.Recovery.TransitionFsLabel
+		label = configs.Recovery.TransitionFsLabel
 	default:
-		label = configs.Yaml.Recovery.FsLabel
+		label = configs.Recovery.FsLabel
 	}
 
 	// Setup loop devices
@@ -187,7 +194,7 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 	defer os.RemoveAll(tmpDir) // clean up
 
 	recoveryMapperDevice := fmt.Sprintf("/dev/mapper/%sp%s", recoveryImageLoop, recoveryNR)
-	recoveryDir := fmt.Sprintf("%s/device/%s/", tmpDir, configs.Yaml.Recovery.FsLabel)
+	recoveryDir := filepath.Join(tmpDir, "device", configs.Recovery.FsLabel)
 	log.Printf("[mkdir %s]", recoveryDir)
 
 	err = os.MkdirAll(recoveryDir, 0755)
@@ -237,7 +244,7 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 	rplib.Shellexec("grub-editenv", fmt.Sprintf("%s/efi/ubuntu/grub/grubenv", recoveryDir), "create")
 	rplib.Shellexec("grub-editenv", fmt.Sprintf("%s/efi/ubuntu/grub/grubenv", recoveryDir), "set", "firstfactoryrestore=no")
 	rplib.Shellexec("grub-editenv", fmt.Sprintf("%s/efi/ubuntu/grub/grubenv", recoveryDir), "set", "recoverylabel="+label)
-	rplib.Shellexec("grub-editenv", fmt.Sprintf("%s/efi/ubuntu/grub/grubenv", recoveryDir), "set", "recoverytype="+configs.Yaml.Recovery.Type)
+	rplib.Shellexec("grub-editenv", fmt.Sprintf("%s/efi/ubuntu/grub/grubenv", recoveryDir), "set", "recoverytype="+configs.Recovery.Type)
 
 	log.Printf("[setup recovery uuid]")
 	recoveryUUID := rplib.Shellexecoutput("blkid", recoveryMapperDevice, "-o", "value", "-s", "UUID")
@@ -253,22 +260,22 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 	log.Printf("[add local-includes]")
 	rplib.Shellexec("rsync", "-r", "data/local-includes/", recoveryDir)
 
-	if configs.Yaml.Configs.OemPreinstHookDir != "" {
+	if configs.Configs.OemPreinstHookDir != "" {
 		log.Printf("[Create oem specific pre-install hook directory]")
-		os.Mkdir(fmt.Sprintf("%s/recovery/factory/%s", recoveryDir, configs.Yaml.Configs.OemPreinstHookDir), 0755)
+		os.Mkdir(filepath.Join(recoveryDir, "recovery/factory", configs.Configs.OemPreinstHookDir), 0755)
 	}
 
-	if configs.Yaml.Configs.OemPostinstHookDir != "" {
+	if configs.Configs.OemPostinstHookDir != "" {
 		log.Printf("[Create oem specific post-install hook directory]")
-		os.Mkdir(fmt.Sprintf("%s/recovery/factory/%s", recoveryDir, configs.Yaml.Configs.OemPostinstHookDir), 0755)
+		os.Mkdir(filepath.Join(recoveryDir, "recovery/factory", configs.Configs.OemPostinstHookDir), 0755)
 	}
 
-	if configs.Yaml.Recovery.SystembootImage != "" && configs.Yaml.Recovery.WritableImage != "" {
+	if configs.Recovery.SystembootImage != "" && configs.Recovery.WritableImage != "" {
 		log.Printf("Copy user provided system-boot (%s) and writable (%s) images to %s/recovery/factory directory\n",
-			configs.Yaml.Recovery.SystembootImage, configs.Yaml.Recovery.WritableImage, recoveryDir)
+			configs.Recovery.SystembootImage, configs.Recovery.WritableImage, recoveryDir)
 
-		rplib.Shellexec("cp", configs.Yaml.Recovery.SystembootImage, fmt.Sprintf("%s/recovery/factory/", recoveryDir))
-		rplib.Shellexec("cp", configs.Yaml.Recovery.WritableImage, fmt.Sprintf("%s/recovery/factory/", recoveryDir))
+		rplib.Shellexec("cp", configs.Recovery.SystembootImage, filepath.Join(recoveryDir, "recovery/factory/"))
+		rplib.Shellexec("cp", configs.Recovery.WritableImage, filepath.Join(recoveryDir, "recovery/factory/"))
 	} else {
 		log.Printf("add system-data and writable tarball from base image")
 
@@ -277,23 +284,23 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 
 		err = os.Chdir(fmt.Sprintf("%s/image/system-boot/", tmpDir))
 		rplib.Checkerr(err)
-		rplib.Shellexec("tar", "--xattrs", "-Jcpf", fmt.Sprintf("%s/recovery/factory/system-boot.tar.xz", recoveryDir), ".")
+		rplib.Shellexec("tar", "--xattrs", "-Jcpf", filepath.Join(recoveryDir, "recovery/factory/system-boot.tar.xz"), ".")
 
 		err = os.Chdir(fmt.Sprintf("%s/image/writable/", tmpDir))
 		rplib.Checkerr(err)
-		rplib.Shellexec("tar", "--xattrs", "-Jcpf", fmt.Sprintf("%s/recovery/factory/writable.tar.xz", recoveryDir), ".")
+		rplib.Shellexec("tar", "--xattrs", "-Jcpf", filepath.Join(recoveryDir, "recovery/factory/writable.tar.xz"), ".")
 
 		err = os.Chdir(workingDir)
 		rplib.Checkerr(err)
 	}
 
 	// copy kernel, gadget, os snap
-	kernelSnap := findSnap(fmt.Sprintf("%s/image/writable/system-data/var/lib/snapd/snaps/", tmpDir), configs.Yaml.Snaps.Kernel)
-	rplib.Shellexec("cp", "-f", kernelSnap, fmt.Sprintf("%s/kernel.snap", recoveryDir))
-	gadgetSnap := findSnap(fmt.Sprintf("%s/image/writable/system-data/var/lib/snapd/snaps/", tmpDir), configs.Yaml.Snaps.Gadget)
-	rplib.Shellexec("cp", "-f", gadgetSnap, fmt.Sprintf("%s/gadget.snap", recoveryDir))
-	osSnap := findSnap(fmt.Sprintf("%s/image/writable/system-data/var/lib/snapd/snaps/", tmpDir), configs.Yaml.Snaps.Os)
-	rplib.Shellexec("cp", "-f", osSnap, fmt.Sprintf("%s/os.snap", recoveryDir))
+	kernelSnap := findSnap(filepath.Join(tmpDir, "image/writable/system-data/var/lib/snapd/snaps/"), configs.Snaps.Kernel)
+	rplib.Shellexec("cp", "-f", kernelSnap, filepath.Join(recoveryDir, "kernel.snap"))
+	gadgetSnap := findSnap(filepath.Join(tmpDir, "image/writable/system-data/var/lib/snapd/snaps/"), configs.Snaps.Gadget)
+	rplib.Shellexec("cp", "-f", gadgetSnap, filepath.Join(recoveryDir, "gadget.snap"))
+	osSnap := findSnap(filepath.Join(tmpDir, "image/writable/system-data/var/lib/snapd/snaps/"), configs.Snaps.Os)
+	rplib.Shellexec("cp", "-f", osSnap, filepath.Join(recoveryDir, "os.snap"))
 
 	log.Printf("[setup initrd.img and vmlinuz]")
 	initrdImagePath := fmt.Sprintf("%s/initrd.img", recoveryDir)
@@ -306,16 +313,16 @@ func compressXZImage(imageFile string) {
 }
 
 func printUsage() {
-	fmt.Println("")
-	fmt.Println("ubuntu-recovery-image")
-	fmt.Println("[execute ubuntu-recovery-image in config folder]")
-	fmt.Println("")
+	log.Println("ubuntu-recovery-image")
+	log.Println("[execute ubuntu-recovery-image in config folder]")
+	log.Println("")
 }
 
 var configs rplib.ConfigRecovery
 
 func main() {
 	// Print version
+	const configFile = "config.yaml"
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
 	if "" == version {
@@ -338,51 +345,50 @@ func main() {
 	}
 	log.Printf("Version: %v, Commit: %v, Commit date: %v\n", version, commit, time.Unix(commitstampInt64, 0).UTC())
 
-	// Parse config.yaml
-	var errBool bool
-	configs, errBool = rplib.LoadYamlConfig("config.yaml")
-	if errBool {
-		fmt.Println("Error: parse config.yaml failed")
-		os.Exit(1)
-	}
+	// Load configuration
+	err := configs.Load(configFile)
+	rplib.Checkerr(err)
 
-	log.Printf("[Setup project for %s]", configs.Yaml.Project)
+	log.Println(configs)
 
-	// Create base image or recovery image or both according to 'recoverytype' field in config.yaml
-	if configs.Yaml.Configs.RecoveryType == "base" || configs.Yaml.Configs.RecoveryType == "full" {
+	log.Printf("[Setup project for %s]", configs.Project)
+
+	// Create base image or recovery image or both according to 'recoverytype' field
+	switch configs.Configs.RecoveryType {
+	case "base", "full":
 		createBaseImage()
-		if configs.Yaml.Configs.RecoveryType == "base" {
-			log.Printf("[Create base image %s only]", configs.Yaml.Configs.BaseImage)
+		if configs.Configs.RecoveryType == "base" {
+			log.Println("[Create base image %s only]", configs.Configs.BaseImage)
 			os.Exit(0)
 		}
-	} else if configs.Yaml.Configs.RecoveryType == "recovery" {
-		log.Printf("[Base image is %s]", configs.Yaml.Configs.BaseImage)
-	} else {
-		fmt.Printf("Error: %q is not valid type.\n", configs.Yaml.Configs.RecoveryType)
+	case "recovery":
+		log.Println("[Base image is %s]", configs.Configs.BaseImage)
+	default:
+		log.Println("Error: %q is not valid type.", configs.Configs.RecoveryType)
 		os.Exit(2)
 	}
 
 	// Check if base image exists
-	if _, err := os.Stat(configs.Yaml.Configs.BaseImage); err != nil {
-		fmt.Printf("Error: can not find base image: %s, please build base image first\n", configs.Yaml.Configs.BaseImage)
+	if _, err := os.Stat(configs.Configs.BaseImage); err != nil {
+		log.Println("Error: can not find base image: %s, please build base image first", configs.Configs.BaseImage)
 		os.Exit(2)
 	}
 
-	// Create recovery image if 'recoverytype' field is 'recovery' or 'full' in config.yaml
+	// Create recovery image if 'recoverytype' field is 'recovery' or 'full'
 	recoveryNR := "1"
 
-	log.Printf("[start create recovery image with skipxz options: %s.\n]", configs.Yaml.Debug.Xz)
+	log.Printf("[start create recovery image with skipxz options: %s.\n]", configs.Debug.Xz)
 
 	todayTime := time.Now()
 	todayDate := fmt.Sprintf("%d%02d%02d", todayTime.Year(), todayTime.Month(), todayTime.Day())
-	defaultOutputFilename := configs.Yaml.Project + "-" + todayDate + "-0.img"
+	defaultOutputFilename := configs.Project + "-" + todayDate + "-0.img"
 	recoveryOutputFile := flag.String("o", defaultOutputFilename, "Name of the recovery image file to create")
 	flag.Parse()
 
 	createRecoveryImage(recoveryNR, *recoveryOutputFile, buildstamp)
 
-	// Compress image to xz if 'xz' field is 'on' in config.yaml
-	if configs.Yaml.Debug.Xz {
+	// Compress image to xz if 'xz' field is 'on'
+	if configs.Debug.Xz {
 		compressXZImage(*recoveryOutputFile)
 	}
 }
