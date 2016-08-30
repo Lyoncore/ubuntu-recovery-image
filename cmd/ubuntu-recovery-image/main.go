@@ -112,7 +112,7 @@ func setupInitrd(initrdImagePath string, tmpDir string) {
 	_ = rplib.Shellcmdoutput(unxzInitrdCmd)
 
 	// overwrite initrd with initrd_local-include
-	rplib.Shellexec("rsync", "-r", "initrd_local-includes/", initrdTmpDir)
+	rplib.Shellexec("rsync", "-r", "--exclude='.gitkeep'", "initrd_local-includes/", initrdTmpDir)
 
 	log.Printf("[recreate initrd]")
 	_ = rplib.Shellcmdoutput(fmt.Sprintf("( cd %s; find | cpio --quiet -o -H newc ) | xz -c9 --check=crc32 > %s", initrdTmpDir, initrdImagePath))
@@ -182,6 +182,7 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 	baseMapperDeviceArray, err := filepath.Glob(baseMapperDeviceGlobName)
 	rplib.Checkerr(err)
 
+	// mount the base image
 	for _, part := range baseMapperDeviceArray {
 		label := rplib.Shellexecoutput("blkid", part, "-o", "value", "-s", "LABEL")
 		if match, _ := regexp.MatchString("system-boot|writable", label); match {
@@ -222,8 +223,6 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 	rplib.Shellexec("grub-editenv", filepath.Join(recoveryDir, "efi/ubuntu/grub/grubenv"), "set", "recoverylabel="+label)
 	rplib.Shellexec("grub-editenv", filepath.Join(recoveryDir, "efi/ubuntu/grub/grubenv"), "set", "recoverytype="+configs.Recovery.Type)
 
-	os.Mkdir(fmt.Sprintf("%s/oemlog", recoveryDir), 0755)
-
 	// add recovery/factory/
 	err = os.MkdirAll(filepath.Join(recoveryDir, "recovery/factory"), 0755)
 	rplib.Checkerr(err)
@@ -231,18 +230,6 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 	// add recovery/config.yaml
 	log.Printf("[add config.yaml]")
 	rplib.Shellexec("cp", "-f", "config.yaml", filepath.Join(recoveryDir, "recovery"))
-
-	if configs.Configs.OemPreinstHookDir != "" {
-		log.Printf("[Create oem specific pre-install hook directory]")
-		err = os.Mkdir(filepath.Join(recoveryDir, "recovery/factory", configs.Configs.OemPreinstHookDir), 0755)
-		rplib.Checkerr(err)
-	}
-
-	if configs.Configs.OemPostinstHookDir != "" {
-		log.Printf("[Create oem specific post-install hook directory]")
-		err = os.Mkdir(filepath.Join(recoveryDir, "recovery/factory", configs.Configs.OemPostinstHookDir), 0755)
-		rplib.Checkerr(err)
-	}
 
 	// add recovery/factory/system-boot.tar.xz
 	// add recovery/factory/writable.tar.xz
@@ -287,7 +274,7 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 
 	// overwrite with local-includes in configuration
 	log.Printf("[add local-includes]")
-	rplib.Shellexec("rsync", "-r", "local-includes/", recoveryDir)
+	rplib.Shellexec("rsync", "-r", "--exclude='.gitkeep'", "local-includes/", recoveryDir)
 }
 
 func compressXZImage(imageFile string) {
