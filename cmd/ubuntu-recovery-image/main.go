@@ -111,22 +111,6 @@ func setupInitrd(initrdImagePath string, tmpDir string) {
 	unxzInitrdCmd := fmt.Sprintf("unxz < %s/initrd.img | (cd %s; cpio -i )", kernelsnapTmpDir, initrdTmpDir)
 	_ = rplib.Shellcmdoutput(unxzInitrdCmd)
 
-	kerVer := rplib.Shellcmdoutput(fmt.Sprintf("basename %s/lib/modules/*", initrdTmpDir))
-
-	nlsModule := fmt.Sprintf("/lib/modules/%s/kernel/fs/nls/nls_iso8859-1.ko", kerVer)
-	if _, err := os.Stat(filepath.Join(initrdTmpDir, nlsModule)); os.IsNotExist(err) {
-		// nls module didn't exist in initrd.img
-		// try to copy from kernel snap
-		if _, err := os.Stat(filepath.Join(kernelsnapTmpDir, nlsModule)); err == nil {
-			err = os.MkdirAll(filepath.Dir(filepath.Join(initrdTmpDir, nlsModule)), 0755)
-			rplib.Checkerr(err)
-
-			rplib.Shellexec("cp", filepath.Join(kernelsnapTmpDir, nlsModule), filepath.Join(initrdTmpDir, nlsModule))
-			rplib.Shellexec("depmod", "-a", "-b", initrdTmpDir, kerVer)
-			_ = rplib.Shellcmdoutput(fmt.Sprintf("rm -f %s/lib/modules/*/modules.*map", initrdTmpDir))
-		}
-	}
-
 	log.Printf("[modify initrd ORDER file]")
 	orderFile := fmt.Sprintf("%s/scripts/local-premount/ORDER", initrdTmpDir)
 	orderData, err := ioutil.ReadFile(orderFile)
