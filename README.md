@@ -4,6 +4,7 @@
 Build the recovery image
 
 1. Edit .bashrc, add following environment variables.
+$sudo apt install -y git bzr golang-go kpartx
 $cat <<EOF >> ~/.bashrc
 #setup GOPATH
 export GOPATH=${HOME}/gocode
@@ -13,10 +14,11 @@ $. ~/.bashrc
 $go get launchpad.net/godeps
 
 2. Build ubuntu-recovery-image
-$git clone https://github.com/Lyoncore/ubuntu-recovery-image.git
-$cd ubuntu-recovery-image/
+$go get https://github.com/Lyoncore/ubuntu-recovery-image
+$cd $GOPATH/src/github.com/Lyoncore/ubuntu-recovery-image
 $godeps -t -u dependencies.tsv
 $go run build.go build
+$cd ../
 
 3. Get config and build image
 $git clone https://github.com/Lyoncore/generic-amd64-config.git
