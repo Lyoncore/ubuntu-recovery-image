@@ -1,0 +1,14 @@
+dbstorepath: ./Keystore/
+testkeyfile: TestKey.asc
+devicekeyfile: TestDeviceKey.asc
+accountid: System
+model: Router 3400
+serial: A1228ML
+nonce: abc123456
+output:
+  keypairjsonfile: keypair.json
+  modeljsonfile: model.json
+  accountassertionfile: account.assertion
+  accountkeyassertionfile: account-key.assertion
+  modelassertionfile: model.assertion
+  serialassertionfile: serial.assertion

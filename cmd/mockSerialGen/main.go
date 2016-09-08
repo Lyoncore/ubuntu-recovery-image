@@ -3,38 +3,105 @@ package main
 import (
 	"encoding/base64"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
+	"strconv"
 	"time"
 
 	"github.com/snapcore/snapd/asserts"
 	"github.com/snapcore/snapd/asserts/assertstest"
 	"github.com/snapcore/snapd/asserts/systestkeys"
 	"github.com/ubuntu-core/identity-vault/service"
+	"gopkg.in/yaml.v2"
 )
 
 import rplib "github.com/Lyoncore/ubuntu-recovery-rplib"
+import utils "github.com/Lyoncore/ubuntu-recovery-image/utils"
 
 var version string
 var commit string
 var commitstamp string
 var build_date string
 
-const KeyStorePath = "./KeyStore"
-
-type ConfigSettings struct {
-	KeyStorePath            string `yaml:"keystorePath"`
-	TestKeyFile             string
-	DeviceKeyFile           string
+type Output struct {
+	KeypairJsonFile         string
+	ModelJsonFile           string
 	AccountAssertionFile    string
 	AccountKeyAssertionFile string
 	ModelAssertionFile      string
 	SerialAssertionFile     string
 }
 
+type ConfigSettings struct {
+	DBStorePath   string
+	TestKeyFile   string
+	DeviceKeyFile string
+	AccountID     string
+	Model         string
+	Serial        string
+	Nonce         string
+
+	Output Output
+}
+
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
+
+	if "" == version {
+		version = utils.Version
+	}
+	commitstampInt64, _ := strconv.ParseInt(commitstamp, 10, 64)
+	log.Printf("Version: %v, Commit: %v, Build date: %v\n", version, commit, time.Unix(commitstampInt64, 0).UTC())
+	fmt.Println("You could feed entropy using rngd when testing. e.g.:")
+	fmt.Println("rngd -r /dev/urandom")
+
+	config := ConfigSettings{}
+	flag.Parse()
+	if 1 != len(flag.Args()) {
+		config = ConfigSettings{
+			DBStorePath:   "./Keystore/",
+			TestKeyFile:   "TestKey.asc",
+			DeviceKeyFile: "TestDeviceKey.asc",
+			AccountID:     "System",
+			Model:         "Router 3400",
+			Serial:        "A1228ML",
+			Nonce:         "abc123456",
+			Output: Output{
+				KeypairJsonFile:         "keypair.json",
+				ModelJsonFile:           "model.json",
+				AccountAssertionFile:    "account.assertion",
+				AccountKeyAssertionFile: "account-key.assertion",
+				ModelAssertionFile:      "model.assertion",
+				SerialAssertionFile:     "serial.assertion",
+			},
+		}
+		out, err := yaml.Marshal(config)
+		if err != nil {
+			log.Println(err)
+		}
+		log.Println("config file example:")
+		log.Println(string(out))
+		log.Fatal("You need to provide a config file")
+	}
+
+	// load config file
+	filename := flag.Arg(0)
+	yamlFile, err := ioutil.ReadFile(filename)
+	rplib.Checkerr(err)
+	err = yaml.Unmarshal(yamlFile, &config)
+	if err != nil {
+		panic(err)
+	}
+
+	// print config
+	out, err := yaml.Marshal(config)
+	if err != nil {
+		panic(err)
+	}
+	log.Println("config:")
+	log.Println(string(out))
 
 	const encodedTestRootAccount = `type: account
 authority-id: testrootorg
@@ -107,16 +174,13 @@ k9v1ImHrPI6+o+xjCbMc2xdRcvM+
 
 	RootAccountID := TestRootAccount.(*asserts.Account).AccountID()
 	log.Println("RootAccountID: ", RootAccountID)
-	const accountID = "System"
-	const modelName = "Router 3400"
-	const serial = "A123456"
 
 	// open db
-	fsStore, err := asserts.OpenFSKeypairManager(KeyStorePath)
+	fsStore, err := asserts.OpenFSKeypairManager(config.DBStorePath)
 	if err != nil {
 		panic(err)
 	}
-	bs, err := asserts.OpenFSBackstore(KeyStorePath)
+	bs, err := asserts.OpenFSBackstore(config.DBStorePath)
 	if err != nil {
 		panic(err)
 	}
@@ -137,13 +201,13 @@ k9v1ImHrPI6+o+xjCbMc2xdRcvM+
 	// query account from db
 	var trustedAcct *asserts.Account
 	ret, err := db.Find(asserts.AccountType, map[string]string{
-		"account-id": accountID,
+		"account-id": config.AccountID,
 	})
 	if asserts.ErrNotFound == err {
 		// not found in db. generate account
 		log.Println("Create new account")
-		trustedAcct = assertstest.NewAccount(rootSigning, accountID, map[string]interface{}{
-			"account-id": accountID,
+		trustedAcct = assertstest.NewAccount(rootSigning, config.AccountID, map[string]interface{}{
+			"account-id": config.AccountID,
 			"validation": "certified",
 			"timestamp":  time.Now().Format(time.RFC3339),
 		}, "")
@@ -160,13 +224,13 @@ k9v1ImHrPI6+o+xjCbMc2xdRcvM+
 	assert := []asserts.Assertion{trustedAcct}
 	log.Println("trustedAcct:")
 	log.Println(string(asserts.Encode(assert[0])))
-	ioutil.WriteFile(AccountAssertionFile, asserts.Encode(assert[0]), 0600)
+	ioutil.WriteFile(config.Output.AccountAssertionFile, asserts.Encode(assert[0]), 0600)
 
 	// load keypair
 	var accountPrivKey asserts.PrivateKey
 	var trustedKey *asserts.AccountKey
 	var armored []byte
-	armored, err = ioutil.ReadFile(TestKeyFile)
+	armored, err = ioutil.ReadFile(config.TestKeyFile)
 	if err == nil {
 		accountPrivKey, _ = assertstest.ReadPrivKey(string(armored))
 		log.Println("account key have been read:", accountPrivKey.PublicKey().ID())
@@ -176,15 +240,15 @@ k9v1ImHrPI6+o+xjCbMc2xdRcvM+
 		rplib.Checkerr(err)
 
 		// export armored private key
-		ioutil.WriteFile(TestKeyFile, armored, 0600)
+		ioutil.WriteFile(config.TestKeyFile, armored, 0600)
 
 		// import new keypair
-		err = db.ImportKey(accountID, accountPrivKey)
+		err = db.ImportKey(config.AccountID, accountPrivKey)
 		rplib.Checkerr(err)
 	}
 
 	encodedSigningKey := base64.StdEncoding.EncodeToString(armored)
-	keypairJson, err := json.Marshal(service.KeypairWithPrivateKey{PrivateKey: encodedSigningKey, AuthorityID: accountID})
+	keypairJson, err := json.Marshal(service.KeypairWithPrivateKey{PrivateKey: encodedSigningKey, AuthorityID: config.AccountID})
 	if err != nil {
 		panic(err)
 	}
@@ -193,7 +257,7 @@ k9v1ImHrPI6+o+xjCbMc2xdRcvM+
 	// query account-key from db
 	// should be signed by testrootorg
 	ret, err = db.Find(asserts.AccountKeyType, map[string]string{
-		"account-id":          accountID,
+		"account-id":          config.AccountID,
 		"public-key-sha3-384": accountPrivKey.PublicKey().ID(),
 	})
 	if asserts.ErrNotFound == err {
@@ -215,17 +279,17 @@ k9v1ImHrPI6+o+xjCbMc2xdRcvM+
 	log.Println("trustedKey:")
 	assert = []asserts.Assertion{trustedKey}
 	log.Println(string(asserts.Encode(assert[0])))
-	ioutil.WriteFile(AccountKeyAssertionFile, asserts.Encode(assert[0]), 0600)
+	ioutil.WriteFile(config.Output.AccountKeyAssertionFile, asserts.Encode(assert[0]), 0600)
 	log.Println("Public key id of trustedKey: ", trustedKey.PublicKeyID())
 
 	// signing db of developer account
-	accountSigning := assertstest.NewSigningDB(accountID, accountPrivKey)
+	accountSigning := assertstest.NewSigningDB(config.AccountID, accountPrivKey)
 	// generate model assertion signed by account-id
 	modelAssertion := rplib.NewModel(accountSigning, map[string]interface{}{
 		"series":       "16",
-		"authority-id": accountID,
-		"brand-id":     accountID,
-		"model":        modelName,
+		"authority-id": config.AccountID,
+		"brand-id":     config.AccountID,
+		"model":        config.Model,
 		"revision":     "1",
 		"core":         "ubuntu-core",
 		"architecture": "amd64",
@@ -234,9 +298,9 @@ k9v1ImHrPI6+o+xjCbMc2xdRcvM+
 		"kernel":       "pc-kernel",
 		"store":        "brand-store",
 	}, "")
-	ioutil.WriteFile(ModelAssertionFile, asserts.Encode(modelAssertion), 0600)
+	ioutil.WriteFile(config.Output.ModelAssertionFile, asserts.Encode(modelAssertion), 0600)
 
-	modelJson, err := json.Marshal(service.ModelSerialize{BrandID: accountID, Name: modelName, KeypairID: 1})
+	modelJson, err := json.Marshal(service.ModelSerialize{BrandID: config.AccountID, Name: config.Model, KeypairID: 1})
 	if err != nil {
 		panic(err)
 	}
@@ -244,7 +308,7 @@ k9v1ImHrPI6+o+xjCbMc2xdRcvM+
 
 	// load device key
 	var devicePrivKey asserts.PrivateKey
-	armored, err = ioutil.ReadFile(DeviceKeyFile)
+	armored, err = ioutil.ReadFile(config.DeviceKeyFile)
 	if err == nil {
 		devicePrivKey, _ = assertstest.ReadPrivKey(string(armored))
 		log.Println("device key have been read:", devicePrivKey.PublicKey().ID())
@@ -256,17 +320,17 @@ k9v1ImHrPI6+o+xjCbMc2xdRcvM+
 		log.Println("new generated Public key id of devicePrivKey: ", devicePrivKey.PublicKey().ID())
 
 		// export armored private key
-		ioutil.WriteFile(DeviceKeyFile, armored, 0600)
+		ioutil.WriteFile(config.DeviceKeyFile, armored, 0600)
 	}
 
 	// generate serial assertion signed by account-id
 	deviceAssertion := rplib.NewDevice(accountSigning, devicePrivKey.PublicKey(), map[string]interface{}{
 		"series":       "16",
-		"authority-id": accountID,
-		"brand-id":     accountID,
-		"model":        modelName,
-		"serial":       serial,
+		"authority-id": config.AccountID,
+		"brand-id":     config.AccountID,
+		"model":        config.Model,
+		"serial":       config.Serial,
 		"revision":     "1",
 	}, "")
-	ioutil.WriteFile(SerialAssertionFile, asserts.Encode(deviceAssertion), 0600)
+	ioutil.WriteFile(config.Output.SerialAssertionFile, asserts.Encode(deviceAssertion), 0600)
 }
