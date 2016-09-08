@@ -1,5 +1,5 @@
 ModelAssertionFile: modelAssertionMock.txt
-SignServer: http://localhost:8080/1.0/
+SignServer: http://localhost:8080/v1/
 ApiKey: U2VyaWFsIFZhdWx0Cg
 DeviceKeyFile: TestDeviceKey.asc
 SerialRequestFile: serial.request

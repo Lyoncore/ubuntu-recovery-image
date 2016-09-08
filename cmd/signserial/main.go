@@ -39,7 +39,7 @@ func GetNonce(vaultServer string, apikey string) (string, error) {
 	// get nonce
 	body := bytes.NewBuffer([]byte(""))
 	vaultServer = strings.TrimRight(vaultServer, "/")
-	vaultServer = vaultServer + "/nonce"
+	vaultServer = vaultServer + "/request-id"
 	log.Println("send request to:", vaultServer)
 	req, err := http.NewRequest("POST", vaultServer, body)
 	if err != nil {
@@ -59,13 +59,13 @@ func GetNonce(vaultServer string, apikey string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	var nonceResponse service.NonceResponse
+	var nonceResponse service.RequestIDResponse
 	err = json.Unmarshal(returnBody, &nonceResponse)
 	if err != nil {
-		log.Println("returnBody:", returnBody)
+		log.Println("returnBody:", string(returnBody))
 		return "", err
 	}
-	return nonceResponse.Nonce, nil
+	return nonceResponse.RequestID, nil
 }
 
 func main() {

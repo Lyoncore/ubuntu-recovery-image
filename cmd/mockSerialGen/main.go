@@ -243,7 +243,7 @@ k9v1ImHrPI6+o+xjCbMc2xdRcvM+
 		ioutil.WriteFile(config.TestKeyFile, armored, 0600)
 
 		// import new keypair
-		err = db.ImportKey(config.AccountID, accountPrivKey)
+		err = db.ImportKey(accountPrivKey)
 		rplib.Checkerr(err)
 	}
 
@@ -325,12 +325,13 @@ k9v1ImHrPI6+o+xjCbMc2xdRcvM+
 
 	// generate serial assertion signed by account-id
 	deviceAssertion := rplib.NewDevice(accountSigning, devicePrivKey.PublicKey(), map[string]interface{}{
-		"series":       "16",
-		"authority-id": config.AccountID,
-		"brand-id":     config.AccountID,
-		"model":        config.Model,
-		"serial":       config.Serial,
-		"revision":     "1",
+		"series":              "16",
+		"authority-id":        config.AccountID,
+		"brand-id":            config.AccountID,
+		"model":               config.Model,
+		"serial":              config.Serial,
+		"device-key-sha3-384": devicePrivKey.PublicKey().ID(),
+		"revision":            "1",
 	}, "")
 	ioutil.WriteFile(config.Output.SerialAssertionFile, asserts.Encode(deviceAssertion), 0600)
 }
