@@ -203,8 +203,8 @@ func createBaseImage() {
 func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstamp utils.BuildStamp) {
 	var label string
 	switch configs.Recovery.Type {
-	case rplib.FIELD_TRANSITION:
-		label = configs.Recovery.TransitionFsLabel
+	case rplib.FIELD_TRANSITION, rplib.HEADLESS_INSTALLER:
+		label = configs.Recovery.InstallerFsLabel
 	default:
 		label = configs.Recovery.FsLabel
 	}
