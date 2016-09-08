@@ -46,7 +46,7 @@ func GetNonce(vaultServer string, apikey string) (string, error) {
 		return "", err
 	}
 	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Add("api-key", "U2VyaWFsIFZhdWx0Cg")
+	req.Header.Add("api-key", apikey)
 
 	client := &http.Client{}
 	response, err := client.Do(req)
