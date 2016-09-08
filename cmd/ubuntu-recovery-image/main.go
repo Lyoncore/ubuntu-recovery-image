@@ -1,22 +1,26 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
 	"gopkg.in/yaml.v2"
-)
 
-import rplib "github.com/Lyoncore/ubuntu-recovery-rplib"
-import utils "github.com/Lyoncore/ubuntu-recovery-image/utils"
+	rplib "github.com/Lyoncore/ubuntu-recovery-rplib"
+
+	utils "github.com/Lyoncore/ubuntu-recovery-image/utils"
+)
 
 var version string
 var commit string
@@ -38,6 +42,86 @@ func setupLoopDevice(recoveryOutputFile string, recoveryNR string, label string)
 	err = syscall.Fallocate(int(outputfile.Fd()), 0, 0, basefilest.Size())
 	rplib.Checkerr(err)
 
+	//copy partition table
+	log.Printf("Copy partitition table")
+	rplib.Shellcmd(fmt.Sprintf("sfdisk -d %s | sfdisk %s", configs.Configs.BaseImage, recoveryOutputFile))
+
+	var last_end int
+	const PARTITION = "/tmp/partition.txt"
+	rplib.Shellcmd(fmt.Sprintf("parted -ms %s unit B print | sed -n '1,2!p' > %s", configs.Configs.BaseImage, PARTITION))
+	//dd bootloader from base image
+	var f *(os.File)
+	f, err = os.Open(PARTITION)
+	rplib.Checkerr(err)
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		fields := strings.Split(line, ":")
+		nr, err := strconv.Atoi(fields[0])
+		rplib.Checkerr(err)
+		begin := strings.TrimRight(fields[1], "B")
+		end, err := strconv.Atoi(strings.TrimRight(fields[2], "B"))
+		rplib.Checkerr(err)
+		size := strings.TrimRight(fields[3], "B")
+		log.Println("nr: ", nr)
+		log.Println("begin: ", begin)
+		log.Println("end: ", end)
+		log.Println("size: ", size)
+
+		//dd data before partition
+		if nr == 1 {
+			log.Printf("Copy raw data")
+			begin_nr, err := strconv.Atoi(begin)
+			rplib.Checkerr(err)
+			if configs.Configs.Bootloader == "gpt" {
+				rplib.DD(configs.Configs.BaseImage, recoveryOutputFile, "bs=512", "skip=34", "seek=34", fmt.Sprintf("count=%s", (begin_nr/512)-34), "conv=notrunc")
+			} else if configs.Configs.Bootloader == "mbr" {
+				rplib.DD(configs.Configs.BaseImage, recoveryOutputFile, "bs=512", "skip=1", "seek=1", fmt.Sprintf("count=%s", (begin_nr/512)-1), "conv=notrunc")
+			}
+		}
+
+		if recovery_nr, err := strconv.Atoi(recoveryNR); err == nil {
+			if nr < recovery_nr {
+				rplib.DD(configs.Configs.BaseImage, recoveryOutputFile, "bs=1", fmt.Sprintf("skip=%s", begin), fmt.Sprintf("seek=%s", begin), fmt.Sprintf("count=%s", size), "conv=notrunc")
+				last_end = end
+			} else { //remove paritions which recovery and after partitions
+				rplib.Shellexec("parted", "-ms", recoveryOutputFile, "rm", fmt.Sprintf("%v", nr))
+			}
+		}
+	}
+
+	nr, err := strconv.Atoi(recoveryNR)
+	rplib.Checkerr(err)
+	var recoveryBegin int
+
+	if nr == 1 {
+		recoveryBegin = 4194304 //4MiB
+	} else {
+		recoveryBegin = last_end + 1
+	}
+	recoverySize, err := strconv.Atoi(configs.Configs.RecoverySize)
+	rplib.Checkerr(err)
+	recoveryEnd := recoveryBegin + (recoverySize * 1024 * 1024)
+
+	if configs.Configs.PartitionType == "gpt" {
+		rplib.Shellexec("parted", "-ms", "-a", "optimal", recoveryOutputFile,
+			"unit", "B",
+			"mkpart", "primary", "fat32", fmt.Sprintf("%d", recoveryBegin), fmt.Sprintf("%d", recoveryEnd),
+			"name", recoveryNR, label,
+			"print")
+	} else if configs.Configs.PartitionType == "mbr" {
+		rplib.Shellexec("parted", "-ms", "-a", "optimal", recoveryOutputFile,
+			"unit", "B",
+			"mkpart", "primary", "fat32", fmt.Sprintf("%d", recoveryBegin), fmt.Sprintf("%d", recoveryEnd),
+			"print")
+	}
+
+	//mark bootable if recovery in first partition
+	if nr == 1 {
+		rplib.Shellexec("parted", "-ms", recoveryOutputFile,
+			"set", recoveryNR, "boot", "on")
+	}
+
 	log.Printf("[setup a loopback device for recovery image %s]", recoveryOutputFile)
 	recoveryImageLoop := rplib.Shellcmdoutput(fmt.Sprintf("losetup --find --show %s | xargs basename", recoveryOutputFile))
 
@@ -45,19 +129,6 @@ func setupLoopDevice(recoveryOutputFile string, recoveryNR string, label string)
 	baseImageLoop := rplib.Shellcmdoutput(fmt.Sprintf("losetup -r --find --show %s | xargs basename", configs.Configs.BaseImage))
 
 	log.Printf("[create %s partition on %s]", recoveryOutputFile, recoveryImageLoop)
-
-	recoveryBegin := 4
-	recoverySize, err := strconv.Atoi(configs.Configs.RecoverySize)
-	rplib.Checkerr(err)
-	recoveryEnd := recoveryBegin + recoverySize
-
-	rplib.Shellexec("parted", "-ms", "-a", "optimal", fmt.Sprintf("/dev/%s", recoveryImageLoop),
-		"unit", "MiB",
-		"mklabel", "gpt",
-		"mkpart", "primary", "fat32", fmt.Sprintf("%d", recoveryBegin), fmt.Sprintf("%d", recoveryEnd),
-		"name", recoveryNR, label,
-		"set", recoveryNR, "boot", "on",
-		"print")
 
 	return baseImageLoop, recoveryImageLoop
 }
@@ -211,17 +282,23 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 
 	log.Printf("[deploy default efi bootdir]")
 
-	// add efi/
-	rplib.Shellexec("cp", "-ar", fmt.Sprintf("%s/image/system-boot/efi", tmpDir), recoveryDir)
+	if configs.Configs.Bootloader == "grub" {
+		// add efi/
+		rplib.Shellexec("cp", "-ar", fmt.Sprintf("%s/image/system-boot/efi", tmpDir), recoveryDir)
 
-	// edit efi/ubuntu/grub/grubenv
-	err = os.Remove(filepath.Join(recoveryDir, "efi/ubuntu/grub/grubenv"))
-	rplib.Checkerr(err)
-	log.Printf("[create grubenv for switching between core and recovery system]")
-	rplib.Shellexec("grub-editenv", filepath.Join(recoveryDir, "efi/ubuntu/grub/grubenv"), "create")
-	rplib.Shellexec("grub-editenv", filepath.Join(recoveryDir, "efi/ubuntu/grub/grubenv"), "set", "firstfactoryrestore=no")
-	rplib.Shellexec("grub-editenv", filepath.Join(recoveryDir, "efi/ubuntu/grub/grubenv"), "set", "recoverylabel="+label)
-	rplib.Shellexec("grub-editenv", filepath.Join(recoveryDir, "efi/ubuntu/grub/grubenv"), "set", "recoverytype="+configs.Recovery.Type)
+		// edit efi/ubuntu/grub/grubenv
+		err = os.Remove(filepath.Join(recoveryDir, "efi/ubuntu/grub/grubenv"))
+		rplib.Checkerr(err)
+		log.Printf("[create grubenv for switching between core and recovery system]")
+		rplib.Shellexec("grub-editenv", filepath.Join(recoveryDir, "efi/ubuntu/grub/grubenv"), "create")
+		rplib.Shellexec("grub-editenv", filepath.Join(recoveryDir, "efi/ubuntu/grub/grubenv"), "set", "firstfactoryrestore=no")
+		rplib.Shellexec("grub-editenv", filepath.Join(recoveryDir, "efi/ubuntu/grub/grubenv"), "set", "recoverylabel="+label)
+		rplib.Shellexec("grub-editenv", filepath.Join(recoveryDir, "efi/ubuntu/grub/grubenv"), "set", "recoverytype="+configs.Recovery.Type)
+	} else if configs.Configs.Bootloader == "u-boot" {
+		rplib.Shellexec("rsync", "-aAX", "--exclude=*.snap", fmt.Sprintf("%s/image/system-boot/", tmpDir), recoveryDir)
+		log.Printf("[create uEnv.txt]")
+		rplib.Shellexec("cp", "-f", "local-includes/uEnv.txt", fmt.Sprintf("%s/uEnv.txt", recoveryDir))
+	}
 
 	// add recovery/factory/
 	err = os.MkdirAll(filepath.Join(recoveryDir, "recovery/factory"), 0755)
@@ -266,6 +343,17 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 	// add os.snap
 	osSnap := findSnap(filepath.Join(tmpDir, "image/writable/system-data/var/lib/snapd/snaps/"), configs.Snaps.Os)
 	rplib.Shellexec("cp", "-f", osSnap, filepath.Join(recoveryDir, "os.snap"))
+
+	//Update uEnv.txt for os.snap/kernel.snap
+	if configs.Configs.Bootloader == "u-boot" {
+		log.Printf("[Set os/kernel snap in uEnv.txt]")
+		f, err := os.OpenFile(fmt.Sprintf("%s/uEnv.txt", recoveryDir), os.O_APPEND|os.O_WRONLY, 0644)
+		rplib.Checkerr(err)
+		defer f.Close()
+		_, err = f.WriteString(fmt.Sprintf("snap_core=%s\n", path.Base(osSnap)))
+		_, err = f.WriteString(fmt.Sprintf("snap_kernel=%s\n", path.Base(kernelSnap)))
+		rplib.Checkerr(err)
+	}
 
 	// add initrd.img
 	log.Printf("[setup initrd.img]")
@@ -344,8 +432,20 @@ func main() {
 		os.Exit(2)
 	}
 
+	var recoveryNR string
 	// Create recovery image if 'recoverytype' field is 'recovery' or 'full'
-	recoveryNR := "1"
+	if configs.Configs.Bootloader == "grub" {
+		recoveryNR = "1"
+	} else if configs.Configs.Bootloader == "u-boot" {
+		//u-boot must put uboot.env in system-boot and partition need in fixing location
+		//So, let recovry partition location in next to system-boot (the orignal writable)
+		const PARTITON = "/tmp/partition"
+		Loop := rplib.Shellcmdoutput(fmt.Sprintf("losetup --find --show %s | xargs basename", configs.Configs.BaseImage))
+		rplib.Shellcmdoutput(fmt.Sprintf("kpartx -avs /dev/%s", Loop))
+		recovery_part := rplib.Findfs("LABEL=writable") //new recovery partition locate in writable
+		recoveryNR = strings.Trim(recovery_part, fmt.Sprintf("/dev/mapper/%sp", Loop))
+		defer rplib.Shellcmdoutput(fmt.Sprintf("kpartx -ds %s", configs.Configs.BaseImage))
+	}
 
 	log.Printf("[start create recovery image with skipxz options: %s.\n]", configs.Debug.Xz)
 
