@@ -40,6 +40,7 @@ type ConfigSettings struct {
 	DeviceKeyFile string
 	AccountID     string
 	Model         string
+	Store         string
 	Serial        string
 	Nonce         string
 
@@ -65,6 +66,7 @@ func main() {
 			TestKeyFile:   "TestKey.asc",
 			DeviceKeyFile: "TestDeviceKey.asc",
 			AccountID:     "System",
+			Store:         "XXXXXXXXX",
 			Model:         "Router 3400",
 			Serial:        "A1228ML",
 			Nonce:         "abc123456",
@@ -296,7 +298,7 @@ k9v1ImHrPI6+o+xjCbMc2xdRcvM+
 		"class":        "fixed",
 		"gadget":       "pc",
 		"kernel":       "pc-kernel",
-		"store":        "brand-store",
+		"store":        config.Store,
 	}, "")
 	ioutil.WriteFile(config.Output.ModelAssertionFile, asserts.Encode(modelAssertion), 0600)
 

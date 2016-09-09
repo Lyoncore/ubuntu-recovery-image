@@ -2,6 +2,7 @@ dbstorepath: ./Keystore/
 testkeyfile: TestKey.asc
 devicekeyfile: TestDeviceKey.asc
 accountid: System
+store: XXXXXX
 model: Router 3400
 serial: A1228ML
 nonce: abc123456
