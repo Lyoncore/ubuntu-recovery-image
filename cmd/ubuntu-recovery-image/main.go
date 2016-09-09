@@ -70,13 +70,19 @@ func setupLoopDevice(recoveryOutputFile string, recoveryNR string, label string)
 
 		//dd data before partition
 		if nr == 1 {
-			log.Printf("Copy raw data")
 			begin_nr, err := strconv.Atoi(begin)
 			rplib.Checkerr(err)
-			if configs.Configs.Bootloader == "gpt" {
-				rplib.DD(configs.Configs.BaseImage, recoveryOutputFile, "bs=512", "skip=34", "seek=34", fmt.Sprintf("count=%s", (begin_nr/512)-34), "conv=notrunc")
-			} else if configs.Configs.Bootloader == "mbr" {
-				rplib.DD(configs.Configs.BaseImage, recoveryOutputFile, "bs=512", "skip=1", "seek=1", fmt.Sprintf("count=%s", (begin_nr/512)-1), "conv=notrunc")
+			log.Printf("Copy raw data, if any")
+			if configs.Configs.PartitionType == "gpt" {
+				count := (begin_nr / 512) - 34
+				if count > 0 {
+					rplib.DD(configs.Configs.BaseImage, recoveryOutputFile, "bs=512", "skip=34", "seek=34", fmt.Sprintf("count=%d", count), "conv=notrunc")
+				}
+			} else if configs.Configs.PartitionType == "mbr" {
+				count := (begin_nr / 512) - 1
+				if count > 0 {
+					rplib.DD(configs.Configs.BaseImage, recoveryOutputFile, "bs=512", "skip=1", "seek=1", fmt.Sprintf("count=%d", count), "conv=notrunc")
+				}
 			}
 		}
 
@@ -178,6 +184,12 @@ func setupInitrd(initrdImagePath string, tmpDir string) {
 	rplib.Shellexec("mount", kernelSnapPath, kernelsnapTmpDir)
 	defer syscall.Unmount(kernelsnapTmpDir, 0)
 
+	log.Printf("[copy kernel.img]")
+	rplib.Shellexec("cp", "-f", fmt.Sprintf("%s/kernel.img", kernelsnapTmpDir), fmt.Sprintf("%s/device/%s/", tmpDir, configs.Recovery.FsLabel))
+
+	log.Printf("[copy dtbs]")
+	rplib.Shellexec("cp", "-rf", fmt.Sprintf("%s/dtbs", kernelsnapTmpDir), fmt.Sprintf("%s/device/%s/", tmpDir, configs.Recovery.FsLabel))
+
 	log.Printf("[unxz initrd in kernel snap]")
 	unxzInitrdCmd := fmt.Sprintf("unxz < %s/initrd.img | (cd %s; cpio -i )", kernelsnapTmpDir, initrdTmpDir)
 	_ = rplib.Shellcmdoutput(unxzInitrdCmd)
@@ -249,6 +261,25 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 	rplib.Checkerr(err)
 	defer syscall.Unmount(recoveryDir, 0)
 
+	//mount system-boot for u-boot
+	var sysbootDir string
+	if configs.Configs.Bootloader == "u-boot" {
+		sysbootNR, err := strconv.Atoi(recoveryNR)
+		rplib.Checkerr(err)
+		sysbootNR -= 1
+		sysbootMapperDevice := fmt.Sprintf("/dev/mapper/%sp%d", recoveryImageLoop, sysbootNR)
+		sysbootDir = filepath.Join(tmpDir, "device", "system-boot")
+		log.Printf("[mkdir %s]", sysbootDir)
+
+		err = os.MkdirAll(sysbootDir, 0755)
+		rplib.Checkerr(err)
+
+		log.Printf("[mount device %s on recovery dir %s]", sysbootMapperDevice, sysbootDir)
+		err = syscall.Mount(sysbootMapperDevice, sysbootDir, "vfat", 0, "")
+		rplib.Checkerr(err)
+		defer syscall.Unmount(sysbootDir, 0)
+	}
+
 	baseMapperDeviceGlobName := fmt.Sprintf("/dev/mapper/%s*", baseImageLoop)
 	baseMapperDeviceArray, err := filepath.Glob(baseMapperDeviceGlobName)
 	rplib.Checkerr(err)
@@ -296,8 +327,9 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 		rplib.Shellexec("grub-editenv", filepath.Join(recoveryDir, "efi/ubuntu/grub/grubenv"), "set", "recoverytype="+configs.Recovery.Type)
 	} else if configs.Configs.Bootloader == "u-boot" {
 		rplib.Shellexec("rsync", "-aAX", "--exclude=*.snap", fmt.Sprintf("%s/image/system-boot/", tmpDir), recoveryDir)
-		log.Printf("[create uEnv.txt]")
-		rplib.Shellexec("cp", "-f", "local-includes/uEnv.txt", fmt.Sprintf("%s/uEnv.txt", recoveryDir))
+		log.Printf("[create uboot.env and uEnv.txt]")
+        rplib.Shellexec("cp", "-f", "local-includes/uEnv.txt", fmt.Sprintf("%s/uEnv.txt", recoveryDir))
+		rplib.Shellexec("cp", "-f", "local-includes/uboot.env", fmt.Sprintf("%s/uEnv.txt", sysbootDir))
 	}
 
 	// add recovery/factory/
