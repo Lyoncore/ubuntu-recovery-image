@@ -17,6 +17,8 @@ import (
 	"gopkg.in/yaml.v2"
 
 	rplib "github.com/Lyoncore/ubuntu-recovery-rplib"
+	configdirs "github.com/Lyoncore/ubuntu-recovery-rplib/dirs/configdir"
+	recoverydirs "github.com/Lyoncore/ubuntu-recovery-rplib/dirs/recovery"
 
 	utils "github.com/Lyoncore/ubuntu-recovery-image/utils"
 )
@@ -239,6 +241,7 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 	recoveryMapperDevice := fmt.Sprintf("/dev/mapper/%sp%s", recoveryImageLoop, recoveryNR)
 	recoveryDir := filepath.Join(tmpDir, "device", configs.Recovery.FsLabel)
 	log.Printf("[mkdir %s]", recoveryDir)
+	recoverydirs.SetRootDir(recoveryDir)
 
 	err = os.MkdirAll(recoveryDir, 0755)
 	rplib.Checkerr(err)
@@ -338,6 +341,9 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 		err = os.Chdir(workingDir)
 		rplib.Checkerr(err)
 	}
+
+	// add /recovery/writable_local-include.squashfs
+	rplib.Shellexec("mksquashfs", configdirs.WritableLocalIncludeDir, recoverydirs.WritableLocalIncludeSquashfs, "-all-root")
 
 	// add kernel.snap
 	kernelSnap := findSnap(filepath.Join(tmpDir, "image/writable/system-data/var/lib/snapd/seed/snaps/"), configs.Snaps.Kernel)
