@@ -184,7 +184,7 @@ func setupInitrd(initrdImagePath string, tmpDir string) {
 	_ = rplib.Shellcmdoutput(unxzInitrdCmd)
 
 	// overwrite initrd with initrd_local-include
-	rplib.Shellexec("rsync", "-r", "--exclude='.gitkeep'", "initrd_local-includes/", initrdTmpDir)
+	rplib.Shellexec("rsync", "-r", "--exclude", ".gitkeep", "initrd_local-includes/", initrdTmpDir)
 
 	log.Printf("[recreate initrd]")
 	_ = rplib.Shellcmdoutput(fmt.Sprintf("( cd %s; find | cpio --quiet -o -H newc ) | xz -c9 --check=crc32 > %s", initrdTmpDir, initrdImagePath))
@@ -373,7 +373,7 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 
 	// overwrite with local-includes in configuration
 	log.Printf("[add local-includes]")
-	rplib.Shellexec("rsync", "-r", "--exclude='.gitkeep'", "local-includes/", recoveryDir)
+	rplib.Shellexec("rsync", "-r", "--exclude", ".gitkeep", "local-includes/", recoveryDir)
 }
 
 func compressXZImage(imageFile string) {
