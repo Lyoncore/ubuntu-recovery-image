@@ -295,13 +295,13 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 		rplib.Shellexec("cp", "-ar", fmt.Sprintf("%s/image/system-boot/efi", tmpDir), recoveryDir)
 
 		// edit efi/ubuntu/grub/grubenv
-		err = os.Remove(filepath.Join(recoveryDir, "efi/ubuntu/grub/grubenv"))
+		err = os.Remove(filepath.Join(recoveryDir, "efi/ubuntu/grubenv"))
 		rplib.Checkerr(err)
 		log.Printf("[create grubenv for switching between core and recovery system]")
-		rplib.Shellexec("grub-editenv", filepath.Join(recoveryDir, "efi/ubuntu/grub/grubenv"), "create")
-		rplib.Shellexec("grub-editenv", filepath.Join(recoveryDir, "efi/ubuntu/grub/grubenv"), "set", "firstfactoryrestore=no")
-		rplib.Shellexec("grub-editenv", filepath.Join(recoveryDir, "efi/ubuntu/grub/grubenv"), "set", "recoverylabel="+label)
-		rplib.Shellexec("grub-editenv", filepath.Join(recoveryDir, "efi/ubuntu/grub/grubenv"), "set", "recoverytype="+configs.Recovery.Type)
+		rplib.Shellexec("grub-editenv", filepath.Join(recoveryDir, "efi/ubuntu/grubenv"), "create")
+		rplib.Shellexec("grub-editenv", filepath.Join(recoveryDir, "efi/ubuntu/grubenv"), "set", "firstfactoryrestore=no")
+		rplib.Shellexec("grub-editenv", filepath.Join(recoveryDir, "efi/ubuntu/grubenv"), "set", "recoverylabel="+label)
+		rplib.Shellexec("grub-editenv", filepath.Join(recoveryDir, "efi/ubuntu/grubenv"), "set", "recoverytype="+configs.Recovery.Type)
 	} else if configs.Configs.Bootloader == "u-boot" {
 		rplib.Shellexec("rsync", "-aAX", "--exclude=*.snap", fmt.Sprintf("%s/image/system-boot/", tmpDir), recoveryDir)
 		log.Printf("[create uEnv.txt]")
