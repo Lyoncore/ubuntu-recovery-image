@@ -102,7 +102,7 @@ func setupInitrd(initrdImagePath string, tmpDir string) {
 	defer os.RemoveAll(kernelsnapTmpDir)
 
 	log.Printf("[locate kernel snap and mount]")
-	kernelSnapPath := findSnap(filepath.Join(tmpDir, "image/writable/system-data/var/lib/snapd/snaps/"), configs.Snaps.Kernel)
+	kernelSnapPath := findSnap(filepath.Join(tmpDir, "image/writable/system-data/var/lib/snapd/seed/snaps/"), configs.Snaps.Kernel)
 
 	rplib.Shellexec("mount", kernelSnapPath, kernelsnapTmpDir)
 	defer syscall.Unmount(kernelsnapTmpDir, 0)
@@ -213,6 +213,7 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 		label := rplib.Shellexecoutput("blkid", part, "-o", "value", "-s", "LABEL")
 		if match, _ := regexp.MatchString("system-boot|writable", label); match {
 			log.Printf("matched")
+			//rplib.Shellexec("dd","if="+part,"of=/tmp/"+label,"bs=32M")
 			baseDir := fmt.Sprintf("%s/image/%s", tmpDir, label)
 			err := os.MkdirAll(baseDir, 0755)
 			rplib.Checkerr(err)
@@ -237,18 +238,18 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 	log.Printf("[deploy default efi bootdir]")
 
 	rplib.Shellexec("cp", "-ar", fmt.Sprintf("%s/image/system-boot/efi", tmpDir), recoveryDir)
-	err = os.Remove(fmt.Sprintf("%s/efi/ubuntu/grub/grubenv", recoveryDir))
+	err = os.Remove(fmt.Sprintf("%s/efi/ubuntu/grubenv", recoveryDir))
 	rplib.Checkerr(err)
 
 	log.Printf("[create grubenv for switching between core and recovery system]")
-	rplib.Shellexec("grub-editenv", fmt.Sprintf("%s/efi/ubuntu/grub/grubenv", recoveryDir), "create")
-	rplib.Shellexec("grub-editenv", fmt.Sprintf("%s/efi/ubuntu/grub/grubenv", recoveryDir), "set", "firstfactoryrestore=no")
-	rplib.Shellexec("grub-editenv", fmt.Sprintf("%s/efi/ubuntu/grub/grubenv", recoveryDir), "set", "recoverylabel="+label)
-	rplib.Shellexec("grub-editenv", fmt.Sprintf("%s/efi/ubuntu/grub/grubenv", recoveryDir), "set", "recoverytype="+configs.Recovery.Type)
+	rplib.Shellexec("grub-editenv", fmt.Sprintf("%s/efi/ubuntu/grubenv", recoveryDir), "create")
+	rplib.Shellexec("grub-editenv", fmt.Sprintf("%s/efi/ubuntu/grubenv", recoveryDir), "set", "firstfactoryrestore=no")
+	rplib.Shellexec("grub-editenv", fmt.Sprintf("%s/efi/ubuntu/grubenv", recoveryDir), "set", "recoverylabel="+label)
+	rplib.Shellexec("grub-editenv", fmt.Sprintf("%s/efi/ubuntu/grubenv", recoveryDir), "set", "recoverytype="+configs.Recovery.Type)
 
 	log.Printf("[setup recovery uuid]")
 	recoveryUUID := rplib.Shellexecoutput("blkid", recoveryMapperDevice, "-o", "value", "-s", "UUID")
-	rplib.Shellexec("grub-editenv", fmt.Sprintf("%s/efi/ubuntu/grub/grubenv", recoveryDir), "set", fmt.Sprintf("recoveryuuid=%s", recoveryUUID))
+	rplib.Shellexec("grub-editenv", fmt.Sprintf("%s/efi/ubuntu/grubenv", recoveryDir), "set", fmt.Sprintf("recoveryuuid=%s", recoveryUUID))
 
 	os.Mkdir(fmt.Sprintf("%s/oemlog", recoveryDir), 0755)
 
@@ -284,22 +285,29 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 
 		err = os.Chdir(fmt.Sprintf("%s/image/system-boot/", tmpDir))
 		rplib.Checkerr(err)
-		rplib.Shellexec("tar", "--xattrs", "-Jcpf", filepath.Join(recoveryDir, "recovery/factory/system-boot.tar.xz"), ".")
+		
+		rplib.Shellexec("tar", "--xattrs", "-cvpf", filepath.Join(recoveryDir, "recovery/factory/system-boot.tar"), ".")
+		//rplib.Shellexec("gzip","/tmp/system-boot")
+		//rplib.Shellexec("cp","/tmp/system-boot.gz",filepath.Join(recoveryDir, "recovery/factory/system-boot.gz"))
 
 		err = os.Chdir(fmt.Sprintf("%s/image/writable/", tmpDir))
 		rplib.Checkerr(err)
-		rplib.Shellexec("tar", "--xattrs", "-Jcpf", filepath.Join(recoveryDir, "recovery/factory/writable.tar.xz"), ".")
+		rplib.Shellexec("tar", "--xattrs", "-cvpf", filepath.Join(recoveryDir, "recovery/factory/writable.tar"), ".")
+		//rplib.Shellexec("e2fsck","-fy","/tmp/writable")
+		//rplib.Shellexec("resize2fs","/tmp/writable","1G")
+		//rplib.Shellexec("gzip","/tmp/writable")
+		//rplib.Shellexec("cp","/tmp/writable.gz",filepath.Join(recoveryDir, "recovery/factory/writable.gz"))
 
 		err = os.Chdir(workingDir)
 		rplib.Checkerr(err)
 	}
 
 	// copy kernel, gadget, os snap
-	kernelSnap := findSnap(filepath.Join(tmpDir, "image/writable/system-data/var/lib/snapd/snaps/"), configs.Snaps.Kernel)
+	kernelSnap := findSnap(filepath.Join(tmpDir, "image/writable/system-data/var/lib/snapd/seed/snaps/"), configs.Snaps.Kernel)
 	rplib.Shellexec("cp", "-f", kernelSnap, filepath.Join(recoveryDir, "kernel.snap"))
-	gadgetSnap := findSnap(filepath.Join(tmpDir, "image/writable/system-data/var/lib/snapd/snaps/"), configs.Snaps.Gadget)
+	gadgetSnap := findSnap(filepath.Join(tmpDir, "image/writable/system-data/var/lib/snapd/seed/snaps/"), configs.Snaps.Gadget)
 	rplib.Shellexec("cp", "-f", gadgetSnap, filepath.Join(recoveryDir, "gadget.snap"))
-	osSnap := findSnap(filepath.Join(tmpDir, "image/writable/system-data/var/lib/snapd/snaps/"), configs.Snaps.Os)
+	osSnap := findSnap(filepath.Join(tmpDir, "image/writable/system-data/var/lib/snapd/seed/snaps/"), configs.Snaps.Os)
 	rplib.Shellexec("cp", "-f", osSnap, filepath.Join(recoveryDir, "os.snap"))
 
 	log.Printf("[setup initrd.img and vmlinuz]")
