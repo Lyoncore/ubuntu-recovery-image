@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net/http"
 	"os"
 	"path"
 	"path/filepath"
@@ -180,14 +181,35 @@ func setupInitrd(initrdImagePath string, tmpDir string) {
 	defer syscall.Unmount(kernelsnapTmpDir, 0)
 
 	log.Printf("[unxz initrd in kernel snap]")
-	unxzInitrdCmd := fmt.Sprintf("unxz < %s/initrd.img | (cd %s; cpio -i )", kernelsnapTmpDir, initrdTmpDir)
-	_ = rplib.Shellcmdoutput(unxzInitrdCmd)
+	initrdImg := filepath.Join(kernelsnapTmpDir, "initrd.img")
+	content, err := ioutil.ReadFile(initrdImg)
+	rplib.Checkerr(err)
+	filetype := http.DetectContentType(content)
+	log.Println("filetype:", filetype)
+	var extractCmd string
+	switch filetype {
+	case "application/x-gzip":
+		extractCmd = "gunzip"
+	case "application/octet-stream":
+		extractCmd = "unxz"
+	default:
+		panic("Uknown file type")
+	}
+	extractInitrdCmd := fmt.Sprintf("%s < %s/initrd.img | (cd %s; cpio -i )", extractCmd, kernelsnapTmpDir, initrdTmpDir)
+	_ = rplib.Shellcmdoutput(extractInitrdCmd)
 
 	// overwrite initrd with initrd_local-include
 	rplib.Shellexec("rsync", "-r", "--exclude", ".gitkeep", "initrd_local-includes/", initrdTmpDir)
 
 	log.Printf("[recreate initrd]")
-	_ = rplib.Shellcmdoutput(fmt.Sprintf("( cd %s; find | cpio --quiet -o -H newc ) | xz -c9 --check=crc32 > %s", initrdTmpDir, initrdImagePath))
+	switch filetype {
+	case "application/x-gzip":
+		_ = rplib.Shellcmdoutput(fmt.Sprintf("( cd %s; find | cpio --quiet -o -H newc ) | gzip -9 > %s", initrdTmpDir, initrdImagePath))
+	case "application/octet-stream":
+		_ = rplib.Shellcmdoutput(fmt.Sprintf("( cd %s; find | cpio --quiet -o -H newc ) | xz -c9 --check=crc32 > %s", initrdTmpDir, initrdImagePath))
+	default:
+		panic("Uknown file type")
+	}
 }
 
 func createBaseImage() {
