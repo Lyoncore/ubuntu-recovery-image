@@ -9,7 +9,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -18,6 +17,8 @@ import (
 	"gopkg.in/yaml.v2"
 
 	rplib "github.com/Lyoncore/ubuntu-recovery-rplib"
+	configdirs "github.com/Lyoncore/ubuntu-recovery-rplib/dirs/configdir"
+	recoverydirs "github.com/Lyoncore/ubuntu-recovery-rplib/dirs/recovery"
 
 	utils "github.com/Lyoncore/ubuntu-recovery-image/utils"
 )
@@ -195,7 +196,7 @@ func setupInitrd(initrdImagePath string, tmpDir string) {
 	_ = rplib.Shellcmdoutput(unxzInitrdCmd)
 
 	// overwrite initrd with initrd_local-include
-	rplib.Shellexec("rsync", "-r", "--exclude='.gitkeep'", "initrd_local-includes/", initrdTmpDir)
+	rplib.Shellexec("rsync", "-r", "--exclude", ".gitkeep", "initrd_local-includes/", initrdTmpDir)
 
 	log.Printf("[recreate initrd]")
 	_ = rplib.Shellcmdoutput(fmt.Sprintf("( cd %s; find | cpio --quiet -o -H newc ) | xz -c9 --check=crc32 > %s", initrdTmpDir, initrdImagePath))
@@ -216,8 +217,8 @@ func createBaseImage() {
 func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstamp utils.BuildStamp) {
 	var label string
 	switch configs.Recovery.Type {
-	case rplib.FIELD_TRANSITION:
-		label = configs.Recovery.TransitionFsLabel
+	case rplib.FIELD_TRANSITION, rplib.HEADLESS_INSTALLER:
+		label = configs.Recovery.InstallerFsLabel
 	default:
 		label = configs.Recovery.FsLabel
 	}
@@ -252,6 +253,7 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 	recoveryMapperDevice := fmt.Sprintf("/dev/mapper/%sp%s", recoveryImageLoop, recoveryNR)
 	recoveryDir := filepath.Join(tmpDir, "device", configs.Recovery.FsLabel)
 	log.Printf("[mkdir %s]", recoveryDir)
+	recoverydirs.SetRootDir(recoveryDir)
 
 	err = os.MkdirAll(recoveryDir, 0755)
 	rplib.Checkerr(err)
@@ -286,22 +288,28 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 
 	// mount the base image
 	for _, part := range baseMapperDeviceArray {
-		label := rplib.Shellexecoutput("blkid", part, "-o", "value", "-s", "LABEL")
-		if match, _ := regexp.MatchString("system-boot|writable", label); match {
-			log.Printf("matched")
-			baseDir := fmt.Sprintf("%s/image/%s", tmpDir, label)
-			err := os.MkdirAll(baseDir, 0755)
-			rplib.Checkerr(err)
-			defer os.RemoveAll(baseDir) // clean up
-
-			log.Printf("[mount device %s on base image dir %s]", part, label)
-			fstype := rplib.Shellexecoutput("blkid", part, "-o", "value", "-s", "TYPE")
-			log.Println("fstype:", fstype)
-			err = syscall.Mount(part, baseDir, fstype, 0, "")
-			rplib.Checkerr(err)
-
-			defer syscall.Unmount(baseDir, 0)
+		fsType := rplib.Shellexecoutput("blkid", part, "-o", "value", "-s", "TYPE")
+		fsType = strings.TrimSpace(fsType)
+		log.Println("fsType:", fsType)
+		var partition string
+		switch fsType {
+		case "vfat":
+			partition = "system-boot"
+		case "ext4":
+			partition = "writable"
+		default:
+			continue
 		}
+		baseDir := filepath.Join(tmpDir, "image", partition)
+		err := os.MkdirAll(baseDir, 0755)
+		rplib.Checkerr(err)
+		defer os.RemoveAll(baseDir) // clean up
+
+		log.Printf("[mount device %s on base image dir %s]", part, partition)
+		err = syscall.Mount(part, baseDir, fsType, 0, "")
+		rplib.Checkerr(err)
+		defer syscall.Unmount(baseDir, 0)
+
 	}
 
 	// add buildstamp
@@ -366,14 +374,17 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 		rplib.Checkerr(err)
 	}
 
+	// add /recovery/writable_local-include.squashfs
+	rplib.Shellexec("mksquashfs", configdirs.WritableLocalIncludeDir, recoverydirs.WritableLocalIncludeSquashfs, "-all-root")
+
 	// add kernel.snap
-	kernelSnap := findSnap(filepath.Join(tmpDir, "image/writable/system-data/var/lib/snapd/snaps/"), configs.Snaps.Kernel)
+	kernelSnap := findSnap(filepath.Join(tmpDir, "image/writable/system-data/var/lib/snapd/seed/snaps/"), configs.Snaps.Kernel)
 	rplib.Shellexec("cp", "-f", kernelSnap, filepath.Join(recoveryDir, "kernel.snap"))
 	// add gadget.snap
-	gadgetSnap := findSnap(filepath.Join(tmpDir, "image/writable/system-data/var/lib/snapd/snaps/"), configs.Snaps.Gadget)
+	gadgetSnap := findSnap(filepath.Join(tmpDir, "image/writable/system-data/var/lib/snapd/seed/snaps/"), configs.Snaps.Gadget)
 	rplib.Shellexec("cp", "-f", gadgetSnap, filepath.Join(recoveryDir, "gadget.snap"))
 	// add os.snap
-	osSnap := findSnap(filepath.Join(tmpDir, "image/writable/system-data/var/lib/snapd/snaps/"), configs.Snaps.Os)
+	osSnap := findSnap(filepath.Join(tmpDir, "image/writable/system-data/var/lib/snapd/seed/snaps/"), configs.Snaps.Os)
 	rplib.Shellexec("cp", "-f", osSnap, filepath.Join(recoveryDir, "os.snap"))
 
 	//Update uEnv.txt for os.snap/kernel.snap
@@ -394,7 +405,7 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 
 	// overwrite with local-includes in configuration
 	log.Printf("[add local-includes]")
-	rplib.Shellexec("rsync", "-r", "--exclude='.gitkeep'", "local-includes/", recoveryDir)
+	rplib.Shellexec("rsync", "-r", "--exclude", ".gitkeep", "local-includes/", recoveryDir)
 }
 
 func compressXZImage(imageFile string) {
