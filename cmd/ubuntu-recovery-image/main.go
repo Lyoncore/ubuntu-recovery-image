@@ -28,9 +28,24 @@ var version string
 var commit string
 var commitstamp string
 
+// MaxInt64 returns the larger of a and b.
+func MaxInt64(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+
+	return b
+}
+
 // setupLoopDevice setup loop device for base image and recovery image.
 func setupLoopDevice(recoveryOutputFile string, recoveryNR string, label string) (string, string) {
 	log.Printf("[SETUP_LOOPDEVICE]")
+
+	basefile, err := os.Open(configs.Configs.BaseImage)
+	rplib.Checkerr(err)
+	defer basefile.Close()
+	basefilest, err := basefile.Stat()
+	rplib.Checkerr(err)
 
 	outputfile, err := os.Create(recoveryOutputFile)
 	rplib.Checkerr(err)
@@ -41,7 +56,9 @@ func setupLoopDevice(recoveryOutputFile string, recoveryNR string, label string)
 
 	// TODO: calculate recovery partition size dynamically.
 	// add 20 Megabytes for filesystem meta data
-	err = syscall.Fallocate(int(outputfile.Fd()), 0, 0, int64(recoverySize+20)*1024*1024)
+	// image size should be larger than or equal to base image. or the gpt table copy would failed
+	imageSize := MaxInt64(int64(recoverySize+20)*1024*1024, basefilest.Size())
+	err = syscall.Fallocate(int(outputfile.Fd()), 0, 0, imageSize)
 	rplib.Checkerr(err)
 
 	//copy partition table
