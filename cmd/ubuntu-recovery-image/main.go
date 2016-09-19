@@ -31,22 +31,24 @@ var commitstamp string
 // setupLoopDevice setup loop device for base image and recovery image.
 func setupLoopDevice(recoveryOutputFile string, recoveryNR string, label string) (string, string) {
 	log.Printf("[SETUP_LOOPDEVICE]")
-	basefile, err := os.Open(configs.Configs.BaseImage)
-	rplib.Checkerr(err)
-	defer basefile.Close()
-	basefilest, err := basefile.Stat()
-	rplib.Checkerr(err)
 
-	log.Printf("fallocate %d bytes for %q\n", basefilest.Size(), configs.Configs.BaseImage)
 	outputfile, err := os.Create(recoveryOutputFile)
 	rplib.Checkerr(err)
 	defer outputfile.Close()
-	err = syscall.Fallocate(int(outputfile.Fd()), 0, 0, basefilest.Size())
+
+	recoverySize, err := strconv.Atoi(configs.Configs.RecoverySize)
+	rplib.Checkerr(err)
+
+	// TODO: calculate recovery partition size dynamically.
+	// add 20 Megabytes for filesystem meta data
+	err = syscall.Fallocate(int(outputfile.Fd()), 0, 0, int64(recoverySize+20)*1024*1024)
 	rplib.Checkerr(err)
 
 	//copy partition table
 	log.Printf("Copy partitition table")
 	rplib.Shellcmd(fmt.Sprintf("sfdisk -d %s | sfdisk %s", configs.Configs.BaseImage, recoveryOutputFile))
+	log.Println("[recover the backup GPT entry]")
+	rplib.Shellexec("sgdisk", recoveryOutputFile, "--randomize-guids", "--move-second-header")
 
 	var last_end int
 	const PARTITION = "/tmp/partition.txt"
@@ -101,8 +103,6 @@ func setupLoopDevice(recoveryOutputFile string, recoveryNR string, label string)
 	} else {
 		recoveryBegin = last_end + 1
 	}
-	recoverySize, err := strconv.Atoi(configs.Configs.RecoverySize)
-	rplib.Checkerr(err)
 	recoveryEnd := recoveryBegin + (recoverySize * 1024 * 1024)
 
 	if configs.Configs.PartitionType == "gpt" {
