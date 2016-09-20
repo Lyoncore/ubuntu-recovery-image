@@ -14,7 +14,7 @@ $. ~/.bashrc
 $go get launchpad.net/godeps
 
 2. Build ubuntu-recovery-image
-$go get https://github.com/Lyoncore/ubuntu-recovery-image
+$go get github.com/Lyoncore/ubuntu-recovery-image
 $cd $GOPATH/src/github.com/Lyoncore/ubuntu-recovery-image
 $godeps -t -u dependencies.tsv
 $go run build.go build
@@ -24,6 +24,7 @@ $cd ../
 $git clone https://github.com/Lyoncore/generic-amd64-config.git
 $cd generic-amd64-config/
 $go run build.go build
+$sh cook-image.sh
 $sudo $GOPATH/bin/ubuntu-recovery-image
 
 4. Run the image in kvm

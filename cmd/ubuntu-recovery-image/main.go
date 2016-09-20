@@ -229,18 +229,6 @@ func setupInitrd(initrdImagePath string, tmpDir string) {
 	}
 }
 
-func createBaseImage() {
-	log.Println("Create base image, channel: %s", configs.Configs.Channel)
-
-	if _, err := os.Stat(configs.Configs.BaseImage); err == nil {
-		log.Println("The file %s exist, remove the file.", configs.Configs.BaseImage)
-		err = os.Remove(configs.Configs.BaseImage)
-		rplib.Checkerr(err)
-	}
-
-	configs.ExecuteUDF()
-}
-
 func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstamp utils.BuildStamp) {
 	var label string
 	switch configs.Recovery.Type {
@@ -461,20 +449,7 @@ func main() {
 
 	log.Printf("[Setup project for %s]", configs.Project)
 
-	// Create base image or recovery image or both according to 'recoverytype' field
-	switch configs.Configs.RecoveryType {
-	case "base", "full":
-		createBaseImage()
-		if configs.Configs.RecoveryType == "base" {
-			log.Println("[Create base image %s only]", configs.Configs.BaseImage)
-			os.Exit(0)
-		}
-	case "recovery":
-		log.Println("[Base image is %s]", configs.Configs.BaseImage)
-	default:
-		log.Println("Error: %q is not valid type.", configs.Configs.RecoveryType)
-		os.Exit(2)
-	}
+	log.Println("[Base image is %s]", configs.Configs.BaseImage)
 
 	// Check if base image exists
 	if _, err := os.Stat(configs.Configs.BaseImage); err != nil {
