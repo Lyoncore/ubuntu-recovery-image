@@ -19,6 +19,7 @@ import (
 	rplib "github.com/Lyoncore/ubuntu-recovery-rplib"
 	configdirs "github.com/Lyoncore/ubuntu-recovery-rplib/dirs/configdir"
 	recoverydirs "github.com/Lyoncore/ubuntu-recovery-rplib/dirs/recovery"
+	uenv "github.com/mvo5/uboot-go/uenv"
 
 	utils "github.com/Lyoncore/ubuntu-recovery-image/utils"
 )
@@ -263,25 +264,6 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 	rplib.Checkerr(err)
 	defer syscall.Unmount(recoveryDir, 0)
 
-	//mount system-boot for u-boot
-	var sysbootDir string
-	if configs.Configs.Bootloader == "u-boot" {
-		sysbootNR, err := strconv.Atoi(recoveryNR)
-		rplib.Checkerr(err)
-		sysbootNR -= 1
-		sysbootMapperDevice := fmt.Sprintf("/dev/mapper/%sp%d", recoveryImageLoop, sysbootNR)
-		sysbootDir = filepath.Join(tmpDir, "device", "system-boot")
-		log.Printf("[mkdir %s]", sysbootDir)
-
-		err = os.MkdirAll(sysbootDir, 0755)
-		rplib.Checkerr(err)
-
-		log.Printf("[mount device %s on recovery dir %s]", sysbootMapperDevice, sysbootDir)
-		err = syscall.Mount(sysbootMapperDevice, sysbootDir, "vfat", 0, "")
-		rplib.Checkerr(err)
-		defer syscall.Unmount(sysbootDir, 0)
-	}
-
 	baseMapperDeviceGlobName := fmt.Sprintf("/dev/mapper/%s*", baseImageLoop)
 	baseMapperDeviceArray, err := filepath.Glob(baseMapperDeviceGlobName)
 	rplib.Checkerr(err)
@@ -318,27 +300,6 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 	rplib.Checkerr(err)
 	err = ioutil.WriteFile(filepath.Join(recoveryDir, utils.BuildStampFile), d, 0644)
 	rplib.Checkerr(err)
-
-	log.Printf("[deploy default efi bootdir]")
-
-	if configs.Configs.Bootloader == "grub" {
-		// add efi/
-		rplib.Shellexec("cp", "-ar", fmt.Sprintf("%s/image/system-boot/efi", tmpDir), recoveryDir)
-
-		// edit efi/ubuntu/grub/grubenv
-		err = os.Remove(filepath.Join(recoveryDir, "efi/ubuntu/grubenv"))
-		rplib.Checkerr(err)
-		log.Printf("[create grubenv for switching between core and recovery system]")
-		rplib.Shellexec("grub-editenv", filepath.Join(recoveryDir, "efi/ubuntu/grubenv"), "create")
-		rplib.Shellexec("grub-editenv", filepath.Join(recoveryDir, "efi/ubuntu/grubenv"), "set", "firstfactoryrestore=no")
-		rplib.Shellexec("grub-editenv", filepath.Join(recoveryDir, "efi/ubuntu/grubenv"), "set", "recoverylabel="+label)
-		rplib.Shellexec("grub-editenv", filepath.Join(recoveryDir, "efi/ubuntu/grubenv"), "set", "recoverytype="+configs.Recovery.Type)
-	} else if configs.Configs.Bootloader == "u-boot" {
-		rplib.Shellexec("rsync", "-aAX", "--exclude=*.snap", fmt.Sprintf("%s/image/system-boot/", tmpDir), recoveryDir)
-		log.Printf("[create uboot.env and uEnv.txt]")
-        rplib.Shellexec("cp", "-f", "local-includes/uEnv.txt", fmt.Sprintf("%s/uEnv.txt", recoveryDir))
-		rplib.Shellexec("cp", "-f", "local-includes/uboot.env", fmt.Sprintf("%s/uEnv.txt", sysbootDir))
-	}
 
 	// add recovery/factory/
 	err = os.MkdirAll(filepath.Join(recoveryDir, "recovery/factory"), 0755)
@@ -387,17 +348,6 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 	osSnap := findSnap(filepath.Join(tmpDir, "image/writable/system-data/var/lib/snapd/seed/snaps/"), configs.Snaps.Os)
 	rplib.Shellexec("cp", "-f", osSnap, filepath.Join(recoveryDir, "os.snap"))
 
-	//Update uEnv.txt for os.snap/kernel.snap
-	if configs.Configs.Bootloader == "u-boot" {
-		log.Printf("[Set os/kernel snap in uEnv.txt]")
-		f, err := os.OpenFile(fmt.Sprintf("%s/uEnv.txt", recoveryDir), os.O_APPEND|os.O_WRONLY, 0644)
-		rplib.Checkerr(err)
-		defer f.Close()
-		_, err = f.WriteString(fmt.Sprintf("snap_core=%s\n", path.Base(osSnap)))
-		_, err = f.WriteString(fmt.Sprintf("snap_kernel=%s\n", path.Base(kernelSnap)))
-		rplib.Checkerr(err)
-	}
-
 	// add initrd.img
 	log.Printf("[setup initrd.img]")
 	initrdImagePath := fmt.Sprintf("%s/initrd.img", recoveryDir)
@@ -406,6 +356,72 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 	// overwrite with local-includes in configuration
 	log.Printf("[add local-includes]")
 	rplib.Shellexec("rsync", "-r", "--exclude", ".gitkeep", "local-includes/", recoveryDir)
+
+	//Deploy bootloader env
+	if configs.Configs.Bootloader == "grub" {
+		log.Printf("[deploy default efi bootdir]")
+		// add efi/
+		rplib.Shellexec("cp", "-ar", fmt.Sprintf("%s/image/system-boot/efi", tmpDir), recoveryDir)
+
+		// edit efi/ubuntu/grub/grubenv
+		err = os.Remove(filepath.Join(recoveryDir, "efi/ubuntu/grubenv"))
+		rplib.Checkerr(err)
+		log.Printf("[create grubenv for switching between core and recovery system]")
+		rplib.Shellexec("grub-editenv", filepath.Join(recoveryDir, "efi/ubuntu/grubenv"), "create")
+		rplib.Shellexec("grub-editenv", filepath.Join(recoveryDir, "efi/ubuntu/grubenv"), "set", "firstfactoryrestore=no")
+		rplib.Shellexec("grub-editenv", filepath.Join(recoveryDir, "efi/ubuntu/grubenv"), "set", "recoverylabel="+label)
+		rplib.Shellexec("grub-editenv", filepath.Join(recoveryDir, "efi/ubuntu/grubenv"), "set", "recoverytype="+configs.Recovery.Type)
+	} else if configs.Configs.Bootloader == "u-boot" {
+		rplib.Shellexec("rsync", "-aAX", "--exclude=*.snap", filepath.Join(tmpDir, "/image/system-boot/"), recoveryDir)
+
+		log.Printf("[Copy sysboot-includes]")
+		rnr, err := strconv.Atoi(recoveryNR)
+		rSysbootDev := fmt.Sprintf("/dev/mapper/%sp%d", recoveryImageLoop, rnr-1) // sysboot is before recovery
+		rSysbootDir := filepath.Join(tmpDir, "device", "rSysboot")
+		log.Printf("[mkdir %s]", rSysbootDir)
+
+		err = os.MkdirAll(rSysbootDir, 0755)
+		rplib.Checkerr(err)
+
+		log.Printf("[mount device %s on recovery dir %s]", rSysbootDev, rSysbootDir)
+		err = syscall.Mount(rSysbootDev, rSysbootDir, "vfat", 0, "")
+		rplib.Checkerr(err)
+		defer syscall.Unmount(rSysbootDir, 0)
+		rplib.CopyTree("sysboot-includes/", rSysbootDir)
+
+		log.Printf("[Set os/kernel snap in uboot.env]")
+		// update uboot.env in recovery partition
+		env, err := uenv.Open(filepath.Join(recoveryDir, "uboot.env"))
+		rplib.Checkerr(err)
+		env.Set("recovery_snap_core", path.Base(osSnap))
+		err = env.Save()
+		rplib.Checkerr(err)
+		env.Set("recovery_snap_kernel", path.Base(kernelSnap))
+		err = env.Save()
+		rplib.Checkerr(err)
+		env.Set("snap_core", path.Base(osSnap))
+		err = env.Save()
+		rplib.Checkerr(err)
+		env.Set("snap_kernel", path.Base(kernelSnap))
+		err = env.Save()
+		rplib.Checkerr(err)
+		env.Set("recov_label", fmt.Sprintf("recovery=LABEL=%s", label))
+		err = env.Save()
+		rplib.Checkerr(err)
+
+		// update uboot.env in recovery partition
+		env, err = uenv.Open(filepath.Join(rSysbootDir, "uboot.env"))
+		rplib.Checkerr(err)
+		env.Set("recovery_snap_core", path.Base(osSnap))
+		err = env.Save()
+		rplib.Checkerr(err)
+		env.Set("recovery_snap_kernel", path.Base(kernelSnap))
+		err = env.Save()
+		rplib.Checkerr(err)
+		env.Set("recov_label", fmt.Sprintf("recovery=LABEL=%s", label))
+		err = env.Save()
+		rplib.Checkerr(err)
+	}
 }
 
 func compressXZImage(imageFile string) {
