@@ -502,7 +502,14 @@ func main() {
 		Loop := rplib.Shellcmdoutput(fmt.Sprintf("losetup --find --show %s | xargs basename", configs.Configs.BaseImage))
 		rplib.Shellcmdoutput(fmt.Sprintf("kpartx -avs /dev/%s", Loop))
 		recovery_part := rplib.Findfs("LABEL=writable") //new recovery partition locate in writable
-		recoveryNR = strings.Trim(recovery_part, fmt.Sprintf("/dev/mapper/%sp", Loop))
+		for i := 1; ; i++ {
+			recoveryNR = recovery_part[len(recovery_part)-i:]
+			_, err := strconv.Atoi(recoveryNR)
+			if err != nil {
+				recoveryNR = recovery_part[len(recovery_part)-(i-1):] //find the the partiiton number after sdaXX/mmcblk0pXX/loop8pXX
+				break
+			}
+		}
 		defer rplib.Shellcmdoutput(fmt.Sprintf("kpartx -ds %s", configs.Configs.BaseImage))
 	}
 
