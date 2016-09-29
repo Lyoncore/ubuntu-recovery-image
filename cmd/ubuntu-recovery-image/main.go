@@ -231,8 +231,8 @@ func setupInitrd(initrdImagePath string, tmpDir string) {
 
 func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstamp utils.BuildStamp) {
 	var label string
-	switch configs.Recovery.Type {
-	case rplib.FIELD_TRANSITION, rplib.HEADLESS_INSTALLER:
+	switch configs.Recovery.ImageType {
+	case rplib.HEADLESS_INSTALLER:
 		label = configs.Recovery.InstallerFsLabel
 	default:
 		label = configs.Recovery.FsLabel
@@ -266,7 +266,7 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 	defer os.RemoveAll(tmpDir) // clean up
 
 	recoveryMapperDevice := fmt.Sprintf("/dev/mapper/%sp%s", recoveryImageLoop, recoveryNR)
-	recoveryDir := filepath.Join(tmpDir, "device", configs.Recovery.FsLabel)
+	recoveryDir := filepath.Join(tmpDir, "device", label)
 	log.Printf("[mkdir %s]", recoveryDir)
 	recoverydirs.SetRootDir(recoveryDir)
 
@@ -327,7 +327,7 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 		log.Printf("[create grubenv for switching between core and recovery system]")
 		rplib.Shellexec("grub-editenv", filepath.Join(recoveryDir, "efi/ubuntu/grubenv"), "create")
 		rplib.Shellexec("grub-editenv", filepath.Join(recoveryDir, "efi/ubuntu/grubenv"), "set", "firstfactoryrestore=no")
-		rplib.Shellexec("grub-editenv", filepath.Join(recoveryDir, "efi/ubuntu/grubenv"), "set", "recoverylabel="+label)
+		rplib.Shellexec("grub-editenv", filepath.Join(recoveryDir, "efi/ubuntu/grubenv"), "set", "recoverylabel="+configs.Recovery.FsLabel)
 		rplib.Shellexec("grub-editenv", filepath.Join(recoveryDir, "efi/ubuntu/grubenv"), "set", "recoverytype="+configs.Recovery.Type)
 		if configs.Recovery.InstallerFsLabel != "" {
 			rplib.Shellexec("grub-editenv", filepath.Join(recoveryDir, "efi/ubuntu/grubenv"), "set", "installerfslabel="+configs.Recovery.InstallerFsLabel)
