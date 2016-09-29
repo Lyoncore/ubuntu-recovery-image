@@ -329,6 +329,9 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 		rplib.Shellexec("grub-editenv", filepath.Join(recoveryDir, "efi/ubuntu/grubenv"), "set", "firstfactoryrestore=no")
 		rplib.Shellexec("grub-editenv", filepath.Join(recoveryDir, "efi/ubuntu/grubenv"), "set", "recoverylabel="+label)
 		rplib.Shellexec("grub-editenv", filepath.Join(recoveryDir, "efi/ubuntu/grubenv"), "set", "recoverytype="+configs.Recovery.Type)
+		if configs.Recovery.InstallerFsLabel != "" {
+			rplib.Shellexec("grub-editenv", filepath.Join(recoveryDir, "efi/ubuntu/grubenv"), "set", "installerfslabel="+configs.Recovery.InstallerFsLabel)
+		}
 	} else if configs.Configs.Bootloader == "u-boot" {
 		rplib.Shellexec("rsync", "-aAX", "--exclude=*.snap", fmt.Sprintf("%s/image/system-boot/", tmpDir), recoveryDir)
 		log.Printf("[create uEnv.txt]")
