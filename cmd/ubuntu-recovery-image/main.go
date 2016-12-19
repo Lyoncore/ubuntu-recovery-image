@@ -292,7 +292,7 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 		defer os.RemoveAll(baseDir) // clean up
 
 		log.Printf("[mount device %s on base image dir %s , baseDir: %s]", part, partition, baseDir)
-		rplib.Shellexec("mount -o ro ", part, baseDir)
+		rplib.Shellexec("mount", "-o", "ro", part, baseDir)
 		//err = syscall.Mount(part, baseDir, fsType, 0, "")
 		//rplib.Checkerr(err)
 		defer syscall.Unmount(baseDir, 0)
