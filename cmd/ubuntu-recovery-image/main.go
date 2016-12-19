@@ -362,11 +362,11 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 
 		err = os.Chdir(fmt.Sprintf("%s/image/system-boot/", tmpDir))
 		rplib.Checkerr(err)
-		rplib.Shellexec("tar", "--xattrs", "-Jcpf", filepath.Join(recoveryDir, "recovery/factory/system-boot.tar.xz"), ".")
+		rplib.Shellexec("tar", "--xattrs", "-I", "pxz -0 -T 4", "-cpf", filepath.Join(recoveryDir, "recovery/factory/system-boot.tar.xz"), ".")
 
 		err = os.Chdir(fmt.Sprintf("%s/image/writable/", tmpDir))
 		rplib.Checkerr(err)
-		rplib.Shellexec("tar", "--xattrs", "-Jcpf", filepath.Join(recoveryDir, "recovery/factory/writable.tar.xz"), ".")
+		rplib.Shellexec("tar", "--xattrs", "-I", "pxz -0 -T 4", "-cpf", filepath.Join(recoveryDir, "recovery/factory/writable.tar.xz"), ".")
 
 		err = os.Chdir(workingDir)
 		rplib.Checkerr(err)

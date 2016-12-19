@@ -4,7 +4,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -34,9 +33,6 @@ func main() {
 	log.SetFlags(0)
 
 	ensureGoPath()
-	readVersionFromPackageJson()
-
-	log.Printf("Version: %s\n", version)
 
 	flag.StringVar(&goarch, "goarch", runtime.GOARCH, "GOARCH")
 	flag.StringVar(&goos, "goos", runtime.GOOS, "GOOS")
@@ -69,24 +65,6 @@ func main() {
 			log.Fatalf("Unknown command %q", cmd)
 		}
 	}
-}
-
-func readVersionFromPackageJson() {
-	reader, err := os.Open("package.json")
-	if err != nil {
-		log.Fatal("Failed to open package.json")
-		return
-	}
-	defer reader.Close()
-
-	jsonObj := map[string]interface{}{}
-	jsonParser := json.NewDecoder(reader)
-
-	if err := jsonParser.Decode(&jsonObj); err != nil {
-		log.Fatal("Failed to decode package.json")
-	}
-
-	version = jsonObj["version"].(string)
 }
 
 func ensureGoPath() {
