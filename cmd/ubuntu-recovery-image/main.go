@@ -399,7 +399,7 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 
 func compressXZImage(imageFile string) {
 	log.Printf("[compress image: %s.xz]", imageFile)
-	rplib.Shellexec("xz", "-0", imageFile)
+	rplib.Shellexec("pxz", "-0", "-T", "4", imageFile)
 }
 
 func printUsage() {
