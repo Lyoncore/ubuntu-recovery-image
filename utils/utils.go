@@ -53,15 +53,17 @@ type BuildStamp struct {
 func ReadVersionFromPackageJson() string {
 	reader, err := os.Open("package.json")
 	if err != nil {
-		log.Fatal("Failed to open package.json")
+		log.Print("Failed to open package.json")
+	} else {
+		defer reader.Close()
 	}
-	defer reader.Close()
 
 	jsonObj := map[string]interface{}{}
 	jsonParser := json.NewDecoder(reader)
 
 	if err := jsonParser.Decode(&jsonObj); err != nil {
-		log.Fatal("Failed to decode package.json")
+		log.Print("Failed to decode package.json")
+		return "unknown-config-version"
 	}
 
 	return jsonObj["version"].(string)
