@@ -55,8 +55,6 @@ func main() {
 			clean()
 			build("ubuntu-recovery-image", "./cmd/ubuntu-recovery-image/", []string{})
 			runPrint("cp", "ubuntu-recovery-image", os.Getenv("GOPATH")+"/bin/")
-			build("signserial", "./cmd/signserial/", []string{})
-			build("mockSerialGen", "./cmd/mockSerialGen/", []string{})
 
 		case "clean":
 			clean()

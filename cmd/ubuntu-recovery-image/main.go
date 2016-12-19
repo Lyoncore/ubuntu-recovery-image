@@ -142,10 +142,10 @@ func setupLoopDevice(recoveryOutputFile string, recoveryNR string, label string)
 	}
 
 	log.Printf("[setup a loopback device for recovery image %s]", recoveryOutputFile)
-	recoveryImageLoop := rplib.Shellcmdoutput(fmt.Sprintf("losetup --find --show %s | xargs basename", recoveryOutputFile))
+	recoveryImageLoop := rplib.Shellcmdoutput(fmt.Sprintf("losetup --partscan --find --show %s | xargs basename", recoveryOutputFile))
 
 	log.Printf("[setup a readonly loopback device for base image]")
-	baseImageLoop := rplib.Shellcmdoutput(fmt.Sprintf("losetup -r --find --show %s | xargs basename", configs.Configs.BaseImage))
+	baseImageLoop := rplib.Shellcmdoutput(fmt.Sprintf("losetup -r --partscan --find --show %s | xargs basename", configs.Configs.BaseImage))
 
 	log.Printf("[create %s partition on %s]", recoveryOutputFile, recoveryImageLoop)
 
@@ -245,19 +245,9 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 	defer rplib.Shellcmd(fmt.Sprintf("losetup -d /dev/%s", recoveryImageLoop))
 	log.Printf("[base image loop:%s, recovery image loop: %s created]\n", baseImageLoop, recoveryImageLoop)
 
-	// Create device maps from partition tables
-	log.Printf("[kpartx]")
-	rplib.Shellexec("kpartx", "-avs", fmt.Sprintf("/dev/%s", baseImageLoop))
-	rplib.Shellexec("kpartx", "-avs", fmt.Sprintf("/dev/%s", recoveryImageLoop))
-	rplib.Shellexec("udevadm", "settle")
-	// Delete device maps
-	defer rplib.Shellexec("udevadm", "settle")
-	defer rplib.Shellexec("kpartx", "-ds", fmt.Sprintf("/dev/%s", recoveryImageLoop))
-	defer rplib.Shellexec("kpartx", "-ds", fmt.Sprintf("/dev/%s", baseImageLoop))
-
 	// TODO: rewritten with launchpad/goget-ubuntu-touch/DiskImage image.Create
 	log.Printf("[mkfs.fat]")
-	rplib.Shellexec("mkfs.fat", "-F", "32", "-n", label, filepath.Join("/dev/mapper", fmt.Sprintf("%sp%s", recoveryImageLoop, recoveryNR)))
+	rplib.Shellexec("mkfs.fat", "-F", "32", "-n", label, filepath.Join("/dev/", fmt.Sprintf("%sp%s", recoveryImageLoop, recoveryNR)))
 
 	tmpDir, err := ioutil.TempDir("", "")
 	rplib.Checkerr(err)
@@ -265,7 +255,7 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 	log.Printf("tmpDir:", tmpDir)
 	defer os.RemoveAll(tmpDir) // clean up
 
-	recoveryMapperDevice := fmt.Sprintf("/dev/mapper/%sp%s", recoveryImageLoop, recoveryNR)
+	recoveryMapperDevice := fmt.Sprintf("/dev/%sp%s", recoveryImageLoop, recoveryNR)
 	recoveryDir := filepath.Join(tmpDir, "device", label)
 	log.Printf("[mkdir %s]", recoveryDir)
 	recoverydirs.SetRootDir(recoveryDir)
@@ -278,7 +268,7 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 	rplib.Checkerr(err)
 	defer syscall.Unmount(recoveryDir, 0)
 
-	baseMapperDeviceGlobName := fmt.Sprintf("/dev/mapper/%s*", baseImageLoop)
+	baseMapperDeviceGlobName := fmt.Sprintf("/dev/%s*", baseImageLoop)
 	baseMapperDeviceArray, err := filepath.Glob(baseMapperDeviceGlobName)
 	rplib.Checkerr(err)
 
@@ -468,11 +458,10 @@ func main() {
 		//u-boot must put uboot.env in system-boot and partition need in fixing location
 		//So, let recovry partition location in next to system-boot (the orignal writable)
 		const PARTITON = "/tmp/partition"
-		Loop := rplib.Shellcmdoutput(fmt.Sprintf("losetup --find --show %s | xargs basename", configs.Configs.BaseImage))
-		rplib.Shellcmdoutput(fmt.Sprintf("kpartx -avs /dev/%s", Loop))
+		Loop := rplib.Shellcmdoutput(fmt.Sprintf("losetup --partscan --find --show %s | xargs basename", configs.Configs.BaseImage))
 		recovery_part := rplib.Findfs("LABEL=writable") //new recovery partition locate in writable
-		recoveryNR = strings.Trim(recovery_part, fmt.Sprintf("/dev/mapper/%sp", Loop))
-		defer rplib.Shellcmdoutput(fmt.Sprintf("kpartx -ds %s", configs.Configs.BaseImage))
+		recoveryNR = strings.Trim(recovery_part, fmt.Sprintf("/dev/%sp", Loop))
+		defer rplib.Shellcmdoutput(fmt.Sprintf("losetup -d %s", configs.Configs.BaseImage))
 	}
 
 	log.Printf("[start create recovery image with skipxz options: %s.\n]", configs.Debug.Xz)
