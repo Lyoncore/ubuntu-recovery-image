@@ -60,7 +60,8 @@ func setupLoopDevice(recoveryOutputFile string, recoveryNR string, label string)
 	imageSize := MaxInt64(int64(recoverySize+20)*1024*1024, basefilest.Size())
 	err = syscall.Fallocate(int(outputfile.Fd()), 0, 0, imageSize)
 	if err != nil {
-		log.Printf("syscall.Fallocate may not support!! Try to use dd to allocate")
+		log.Print(err)
+		log.Print("syscall.Fallocate may not be supported!! Try to use dd to allocate")
 		rplib.DD("/dev/zero", recoveryOutputFile, "bs=1M", fmt.Sprintf("count=%d", imageSize/1024/1024), "conv=notrunc")
 		if _, err := os.Stat(recoveryOutputFile); os.IsNotExist(err) {
 			rplib.Checkerr(err)
