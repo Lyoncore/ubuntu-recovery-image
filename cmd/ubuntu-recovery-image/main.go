@@ -59,7 +59,17 @@ func setupLoopDevice(recoveryOutputFile string, recoveryNR string, label string)
 	// image size should be larger than or equal to base image. or the gpt table copy would failed
 	imageSize := MaxInt64(int64(recoverySize+20)*1024*1024, basefilest.Size())
 	err = syscall.Fallocate(int(outputfile.Fd()), 0, 0, imageSize)
-	rplib.Checkerr(err)
+	if err != nil {
+		log.Print(err)
+	}
+	if _, err := rplib.CheckIfFileExistAndSize(recoveryOutputFile, imageSize); err != nil {
+		log.Print(err)
+		log.Print("Try to use dd to allocate")
+		rplib.DD("/dev/zero", recoveryOutputFile, "bs=1M", fmt.Sprintf("count=%d", imageSize/1024/1024), "conv=notrunc")
+		if _, err := rplib.CheckIfFileExistAndSize(recoveryOutputFile, imageSize); err != nil {
+			rplib.Checkerr(err)
+		}
+	}
 
 	//copy partition table
 	log.Printf("Copy partitition table")
