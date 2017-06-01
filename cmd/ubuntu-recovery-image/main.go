@@ -94,9 +94,9 @@ func setupLoopDevice(recoveryOutputFile string, recoveryNR string, label string)
 			log.Printf("Copy raw data")
 			begin_nr, err := strconv.Atoi(begin)
 			rplib.Checkerr(err)
-			if configs.Configs.Bootloader == "gpt" {
+			if configs.Configs.PartitionType == "gpt" {
 				rplib.DD(configs.Configs.BaseImage, recoveryOutputFile, "bs=512", "skip=34", "seek=34", fmt.Sprintf("count=%s", (begin_nr/512)-34), "conv=notrunc")
-			} else if configs.Configs.Bootloader == "mbr" {
+			} else if configs.Configs.PartitionType == "mbr" {
 				rplib.DD(configs.Configs.BaseImage, recoveryOutputFile, "bs=512", "skip=1", "seek=1", fmt.Sprintf("count=%s", (begin_nr/512)-1), "conv=notrunc")
 			}
 		}
