@@ -64,8 +64,10 @@ func setupLoopDevice(recoveryOutputFile string, recoveryNR string, label string)
 	//copy partition table
 	log.Printf("Copy partitition table")
 	rplib.Shellcmd(fmt.Sprintf("sfdisk -d %s | sfdisk %s", configs.Configs.BaseImage, recoveryOutputFile))
-	log.Println("[recover the backup GPT entry]")
-	rplib.Shellexec("sgdisk", recoveryOutputFile, "--randomize-guids", "--move-second-header")
+	if configs.Configs.PartitionType == "gpt" {
+		log.Println("[recover the backup GPT entry]")
+		rplib.Shellexec("sgdisk", recoveryOutputFile, "--randomize-guids", "--move-second-header")
+	}
 
 	var last_end int
 	const PARTITION = "/tmp/partition.txt"
