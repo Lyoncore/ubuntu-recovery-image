@@ -34,14 +34,15 @@ func setupLoopDevice(recoveryOutputFile string, recoveryNR string, label string)
 	basefile, err := os.Open(configs.Configs.BaseImage)
 	rplib.Checkerr(err)
 	defer basefile.Close()
-	basefilest, err := basefile.Stat()
 	rplib.Checkerr(err)
 
-	log.Printf("fallocate %d bytes for %q\n", basefilest.Size(), configs.Configs.BaseImage)
+	size, _ := strconv.Atoi(configs.Configs.Size)
+	recoveryOutputSize := int64(size * 1024 * 1024 * 1024)
+	log.Printf("fallocate %d bytes for %q\n", recoveryOutputSize, recoveryOutputFile)
 	outputfile, err := os.Create(recoveryOutputFile)
 	rplib.Checkerr(err)
 	defer outputfile.Close()
-	err = syscall.Fallocate(int(outputfile.Fd()), 0, 0, basefilest.Size())
+	err = syscall.Fallocate(int(outputfile.Fd()), 0, 0, recoveryOutputSize)
 	rplib.Checkerr(err)
 
 	//copy partition table
