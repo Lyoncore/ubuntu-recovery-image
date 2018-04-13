@@ -314,13 +314,6 @@ func createRecoveryImage(recoveryNR string, recoveryOutputFile string, buildstam
 	rplib.Checkerr(err)
 	err = ioutil.WriteFile(filepath.Join(recoveryDir, utils.BuildStampFile), d, 0644)
 	rplib.Checkerr(err)
-	writable_etc := filepath.Join(configdirs.WritableLocalIncludeDir, "system-data", "etc")
-	if _, err = os.Stat(writable_etc); err != nil {
-		err := os.MkdirAll(writable_etc, 0775)
-		rplib.Checkerr(err)
-	}
-	err = ioutil.WriteFile(filepath.Join(writable_etc, utils.BuildStampFile), d, 0644)
-	rplib.Checkerr(err)
 
 	log.Printf("[deploy default efi bootdir]")
 
