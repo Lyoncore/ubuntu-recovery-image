@@ -212,7 +212,12 @@ func setupInitrd(initrdImagePath string, tmpDir string) {
 	default:
 		panic("Uknown file type")
 	}
-	extractInitrdCmd := fmt.Sprintf("%s < %s/initrd.img | (cd %s; cpio -i )", extractCmd, kernelsnapTmpDir, initrdTmpDir)
+	// microcode workaround
+	//(cd $TMP2 ; cpio -id ; dd of=$NEW_INITRD) < $INITRD
+	//extractInitrdCmd := fmt.Sprintf("%s < %s/initrd.img | (cd %s; cpio -i )", extractCmd, kernelsnapTmpDir, initrdTmpDir)
+	separateInitrdCmd := fmt.Sprintf("(cd %s ; cpio -id; dd of=%s/new_initrd) < %s/initrd.img", tmpDir, tmpDir, kernelsnapTmpDir)
+	_ = rplib.Shellcmdoutput(separateInitrdCmd)
+	extractInitrdCmd := fmt.Sprintf("%s < %s/new_initrd | (cd %s; cpio -i )", extractCmd, tmpDir, initrdTmpDir)
 	_ = rplib.Shellcmdoutput(extractInitrdCmd)
 
 	// overwrite initrd with initrd_local-include
