@@ -213,6 +213,8 @@ func setupInitrd(initrdImagePath string, tmpDir string) {
 	_ = rplib.Shellcmdoutput(extractInitrdCmd)
 
 	// overwrite initrd with initrd_local-include
+	// There will be two folders included. The main dir is the initrd target
+	initrdTmpDir = initrdTmpDir + "main"
 	rplib.Shellexec("rsync", "-r", "--exclude", ".gitkeep", "initrd_local-includes/", initrdTmpDir)
 
 	log.Printf("[recreate initrd]")
